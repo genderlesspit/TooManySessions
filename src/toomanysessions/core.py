@@ -10,6 +10,9 @@ from toomanythreads import ThreadedServer
 from . import DEBUG, authenticate, Session, Sessions
 from . import Users, User
 
+def callback(request: Request):
+    return request
+
 class SessionedServer(ThreadedServer):
     def __repr__(self):
         return "[SessionedServer]"
@@ -22,6 +25,7 @@ class SessionedServer(ThreadedServer):
             session_age: int = (3600 * 8),
             session_model: Type[Session] = Session,
             authentication_model: Type[Callable] = authenticate,
+            callback_method: Type[Callable] = callback,
             user_model: Type[User] = User,
             verbose: bool = DEBUG,
     ) -> None:
@@ -41,6 +45,7 @@ class SessionedServer(ThreadedServer):
             self.user_model,
             self.user_model.create,
         )
+        self.callback_method = callback_method
         self.verbose = verbose
 
         if not self.session_model.create: raise ValueError(f"{self}: Session models require a create function!")
@@ -71,6 +76,10 @@ class SessionedServer(ThreadedServer):
             session = self.users[session.token]
             if isinstance(session, Response): return session
             return response
+
+        @self.get("/callback")
+        async def callback(request: Request):
+            return self.callback_method(request)
 
     def session_manager(self, request: Request, response) -> tuple[Any, Session]:
         token = request.cookies.get(self.session_name)
