@@ -1,5 +1,5 @@
 import secrets
-from typing import Callable, Any
+from typing import Callable, Any, Type
 
 from loguru import logger as log
 from starlette.requests import Request
@@ -20,9 +20,9 @@ class SessionedServer(ThreadedServer):
             port: int = PortManager.random_port(),
             session_name: str = "session",
             session_age: int = (3600 * 8),
-            session_model: type[Session] = Session,
-            authentication_model: type[callable] = authenticate,
-            user_model: type[User] = User,
+            session_model: Type[Session] = Session,
+            authentication_model: Type[Callable] = authenticate,
+            user_model: Type[User] = User,
             verbose: bool = DEBUG,
     ) -> None:
         self.host = host
@@ -64,9 +64,11 @@ class SessionedServer(ThreadedServer):
         async def middleware(request: Request, call_next):
             response = await call_next(request)
             response, session = self.session_manager(request, response)
-            session = self.auth_manager(session)
-            if isinstance(session, Response): return session
-            session = self.user_manager(session)
+            session = self.authentication_model(session)
+            if not isinstance(session, Session): return session
+            if not session.authenticated:
+                return Response(content="Permission Error", status_code=401)
+            session = self.users[session.token]
             if isinstance(session, Response): return session
             return response
 
@@ -83,15 +85,9 @@ class SessionedServer(ThreadedServer):
         session = self.sessions[token]
         return response, session
 
-    def auth_manager(self, session: Session) -> Session | Response:
-        session = self.authentication_model(session)
-        if not session.authenticated:
-            return Response(content="Permission Error", status_code=401)
-        return session
-
-    def user_manager(self, session: Session) -> Session | Response:
-        try:
-            session.user = self.users[session.token]
-        except Exception:
-            return Response(content="Login Failed!", status_code=401)
-        return session
+    # def user_manager(self, session: Session) -> Session | Response:
+    #     try:
+    #         session.user = self.users[session.token]
+    #     except Exception:
+    #         return Response(content="Login Failed!", status_code=401)
+    #     return session

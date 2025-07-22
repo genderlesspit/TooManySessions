@@ -4,6 +4,7 @@ from typing import Any, Type
 from fastapi import APIRouter
 from loguru import logger as log
 from starlette.requests import Request
+from starlette.responses import Response
 
 from . import DEBUG
 
@@ -47,7 +48,7 @@ class Users(APIRouter):
                     self.cache[token] = self.user_setup(token)
                 except Exception as e:
                     if self.verbose: log.warning(f"{self}: User creation failed!:\n{e}")
-                    raise
+                    return Response(content="Login Failed!", status_code=401)
                 cached = self.cache[token]
             if cached is None: raise RuntimeError
             if self.verbose: log.success(f"{self}: Successfully located:\nsession={cached}!")
