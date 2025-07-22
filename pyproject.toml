@@ -6,9 +6,13 @@ authors = [
     {name = "genderlesspit",email = "59433707+genderlesspit@users.noreply.github.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
-    "toomanythreads (>=0.2.3,<0.3.0)"
+    "toomanythreads (>=0.2.3,<0.3.0)",
+    "fastapi (>=0.116.1,<0.117.0)",
+    "starlette (>=0.47.2,<0.48.0)",
+    "toomanyports (>=0.1.1,<0.2.0)",
+    "loguru (>=0.7.3,<0.8.0)"
 ]
 
 [tool.poetry]
