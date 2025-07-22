@@ -1,4 +1,5 @@
 import secrets
+from functools import cached_property
 from typing import Callable, Any, Type
 
 from loguru import logger as log
@@ -80,6 +81,10 @@ class SessionedServer(ThreadedServer):
         @self.get("/callback")
         async def callback(request: Request):
             return self.callback_method(request)
+
+    @cached_property
+    def redirect_uri(self):
+        return f"{self.url}/callback"
 
     def session_manager(self, request: Request, response) -> tuple[Any, Session]:
         token = request.cookies.get(self.session_name)
