@@ -1,6 +1,6 @@
 import secrets
 from functools import cached_property
-from typing import Callable, Any, Type
+from typing import Callable, Any, Type, List
 
 from loguru import logger as log
 from starlette.requests import Request
@@ -19,16 +19,16 @@ class SessionedServer(ThreadedServer):
         return "[SessionedServer]"
 
     def __init__(
-            self,
-            host: str = "localhost",
-            port: int = PortManager.random_port(),
-            session_name: str = "session",
-            session_age: int = (3600 * 8),
-            session_model: Type[Session] = Session,
-            authentication_model: Type[Callable] = authenticate,
-            callback_method: Type[Callable] = callback,
-            user_model: Type[User] = User,
-            verbose: bool = DEBUG,
+        self,
+        host: str = "localhost",
+        port: int = PortManager.random_port(),
+        session_name: str = "session",
+        session_age: int = (3600 * 8),
+        session_model: Type[Session] = Session,
+        authentication_model: Type[Callable] = authenticate,
+        callback_method: Type[Callable] = callback,
+        user_model: Type[User] = User,
+        verbose: bool = DEBUG,
     ) -> None:
         self.host = host
         self.port = port
@@ -36,6 +36,9 @@ class SessionedServer(ThreadedServer):
         self.session_age = session_age
         self.session_model = session_model
         self.authentication_model = authentication_model
+        self.auth_callback_method = callback_method
+        self.verbose = verbose
+
         self.sessions = Sessions(
             self.session_model,
             self.authentication_model,
@@ -46,15 +49,13 @@ class SessionedServer(ThreadedServer):
             self.user_model,
             self.user_model.create,
         )
-        self.callback_method = callback_method
-        self.verbose = verbose
 
-        if not self.session_model.create: raise ValueError(f"{self}: Session models require a create function!")
-        # if not isinstance(self.session_model.create, classmethod): raise TypeError(f"{self}: Session models' create function must be a class method!")
-        if not isinstance(self.authentication_model, Callable): raise TypeError(
-            f"{self}: Authentication models must be a function!")
-        if not self.user_model.create: raise ValueError(f"{self}: User models require a create function!")
-        # if not isinstance(self.session_model.create, classmethod): raise TypeError(f"{self}: Session models' create function must be a class method!")
+        if not self.session_model.create:
+            raise ValueError(f"{self}: Session models require a create function!")
+        if not isinstance(self.authentication_model, Callable):
+            raise TypeError(f"{self}: Authentication models must be a function!")
+        if not self.user_model.create:
+            raise ValueError(f"{self}: User models require a create function!")
 
         super().__init__(verbose=self.verbose)
         if self.verbose:
@@ -69,22 +70,35 @@ class SessionedServer(ThreadedServer):
         @self.middleware("http")
         async def middleware(request: Request, call_next):
             response = await call_next(request)
+            if request.url.path in ["/auth/callback", "/sessions", "/users"]:
+                return await response
+
             response, session = self.session_manager(request, response)
-            session = self.authentication_model(session)
-            if not isinstance(session, Session): return session
+
             if not session.authenticated:
-                return Response(content="Permission Error", status_code=401)
+                session = self.authentication_model(session)
+                if isinstance(Response, Session):
+                    return session
+                if not session.authenticated:
+                    return Response(content="Permission Error", status_code=401)
+
             session = self.users[session.token]
-            if isinstance(session, Response): return session
+            if isinstance(session, Response):
+                return session
+
             return response
 
-        @self.get("/callback")
-        async def callback(request: Request):
-            return self.callback_method(request)
+        @self.get("/auth/callback")
+        async def auth_callback(request: Request, call_next):
+            response = await call_next(request)
+            response, session = self.session_manager(request, response)
+            auth_bool = self.auth_callback_method(request)
+            if auth_bool: session.authenticated = True
+            return response
 
     @cached_property
-    def redirect_uri(self):
-        return f"{self.url}/callback"
+    def auth_redirect_uri(self):
+        return f"{self.url}/auth/callback"
 
     def session_manager(self, request: Request, response) -> tuple[Any, Session]:
         token = request.cookies.get(self.session_name)
@@ -98,10 +112,3 @@ class SessionedServer(ThreadedServer):
         response.set_cookie(self.session_name, token, max_age=self.session_age)
         session = self.sessions[token]
         return response, session
-
-    # def user_manager(self, session: Session) -> Session | Response:
-    #     try:
-    #         session.user = self.users[session.token]
-    #     except Exception:
-    #         return Response(content="Login Failed!", status_code=401)
-    #     return session

@@ -56,7 +56,7 @@ class Sessions(APIRouter):
             return self.cache
 
     def __getitem__(self, session_or_token: Any):
-        if isinstance(session_or_token, Session): token: str = session_or_token.token
+        if isinstance(session_or_token, Session): session_or_token: str = session_or_token.token
         token = session_or_token
         if isinstance(token, str):
             if self.verbose: log.debug(
@@ -64,7 +64,8 @@ class Sessions(APIRouter):
             cached = self.cache.get(token)
             if cached is None:
                 if self.verbose: log.warning(f"{self}: Could not get session! Attempting to create...")
-                self.cache[token] = self.authentication_model(self.session_model.create(token))
+                new_session = self.session_model.create(token)
+                self.cache[token] = new_session
                 cached = self.cache[token]
             if cached is None: raise RuntimeError
             if self.verbose: log.success(f"{self}: Successfully located:\nsession={cached}!")
