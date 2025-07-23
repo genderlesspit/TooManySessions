@@ -1,8 +1,10 @@
 import time
 from dataclasses import dataclass
 from typing import Type, Any
-
+import requests
+import httpx
 from fastapi import APIRouter
+from httpx import request
 from loguru import logger as log
 from starlette.requests import Request
 
@@ -33,23 +35,37 @@ class Session:
         return time.time() > self.expires_at
 
 
-def authenticate(session: Session) -> Session:
-    session.authenticated = True
+async def authenticate(session: Session, session_name: str, redirect_uri: str) -> Session:
+    log.debug(f"[TooManySessions] Attempting to authenticate session {session.token}")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                redirect_uri,
+                params={f"{session_name}": f"{session.token}"},
+                timeout=5.0  # Add explicit timeout
+            )
+        log.debug(response)
+    except httpx.TimeoutException:
+        log.error(f"Authentication timeout for session {session.token}")
+        session.authenticated = False
+    except Exception as e:
+        log.error(f"Authentication failed: {e}")
+        session.authenticated = False
     return session
 
 
 class Sessions(APIRouter):
-    verbose: bool
-    cache: dict[str, Session] = {}
-    session_model: Type[Session]
-    authentication_model: Type[callable]
-
-    def __init__(self, session_model: Type[Session] = Session, authentication_model: Type[callable] = authenticate,
-                 verbose: bool = DEBUG):
+    def __init__(
+        self,
+        session_model: Type[Session] = Session,
+        authentication_model: Type[callable] = authenticate,
+        verbose: bool = DEBUG
+    ):
         super().__init__(prefix="/sessions")
         self.session_model = session_model
         self.authentication_model = authentication_model
         self.verbose = verbose
+        self.cache: dict[str, Session] = {}
 
         @self.get("")
         def get_session(request: Request):

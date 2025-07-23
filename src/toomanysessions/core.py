@@ -1,6 +1,6 @@
 import secrets
 from functools import cached_property
-from typing import Callable, Any, Type, List
+from typing import Callable, Any, Type, List, Coroutine
 
 from loguru import logger as log
 from starlette.requests import Request
@@ -11,8 +11,9 @@ from toomanythreads import ThreadedServer
 from . import DEBUG, authenticate, Session, Sessions
 from . import Users, User
 
-def callback(request: Request):
-    return request
+def callback(request: Request, **kwargs):
+    log.debug(f"Dummy callback method executed!")
+    return Response(f"{kwargs}")
 
 class SessionedServer(ThreadedServer):
     def __repr__(self):
@@ -53,7 +54,9 @@ class SessionedServer(ThreadedServer):
         if not self.session_model.create:
             raise ValueError(f"{self}: Session models require a create function!")
         if not isinstance(self.authentication_model, Callable):
-            raise TypeError(f"{self}: Authentication models must be a function!")
+            raise TypeError(f"{self}: Authentication models must be a function, got {type(self.authentication_model)} instead!")
+        # if not isinstance(self.authentication_model(), Coroutine):
+        #     raise TypeError(f"{self}: Authentication models must be async!, got {type(self.authentication_model)} instead!")
         if not self.user_model.create:
             raise ValueError(f"{self}: User models require a create function!")
 
@@ -70,13 +73,18 @@ class SessionedServer(ThreadedServer):
         @self.middleware("http")
         async def middleware(request: Request, call_next):
             response = await call_next(request)
-            if request.url.path in ["/auth/callback", "/sessions", "/users"]:
-                return await response
+            if request.url.path in ["/auth/callback"]: #, "/sessions", "/users"]:
+                log.debug(f"{self}: Bypassing middleware for {request.url}")
+                return response
 
             response, session = self.session_manager(request, response)
 
             if not session.authenticated:
-                session = self.authentication_model(session)
+                session = await self.authentication_model(
+                    session=session,
+                    session_name=self.session_name,
+                    redirect_uri=self.auth_redirect_uri
+                )
                 if isinstance(Response, Session):
                     return session
                 if not session.authenticated:
@@ -89,12 +97,12 @@ class SessionedServer(ThreadedServer):
             return response
 
         @self.get("/auth/callback")
-        async def auth_callback(request: Request, call_next):
-            response = await call_next(request)
-            response, session = self.session_manager(request, response)
-            auth_bool = self.auth_callback_method(request)
-            if auth_bool: session.authenticated = True
-            return response
+        async def auth_callback(request: Request):
+            kwargs = request.query_params
+            log.debug(f"{self}: Received auth callback with kwargs:")
+            for kwarg in kwargs:
+                log.debug(f"  - {kwarg}={kwargs.get(kwarg)}")
+            return self.auth_callback_method(request, **kwargs)
 
     @cached_property
     def auth_redirect_uri(self):
@@ -103,11 +111,10 @@ class SessionedServer(ThreadedServer):
     def session_manager(self, request: Request, response) -> tuple[Any, Session]:
         token = request.cookies.get(self.session_name)
 
-        if not token:
-            token = secrets.token_urlsafe(32)
-        elif "token=" in token:
-            log.warning(f"Token is dirty!: {token}")
-            token = secrets.token_urlsafe(32)
+        if not token: token = secrets.token_urlsafe(32)
+        # elif "token=" in token:
+        #     log.warning(f"Token is dirty!: {token}")
+        #     token = secrets.token_urlsafe(32)
 
         response.set_cookie(self.session_name, token, max_age=self.session_age)
         session = self.sessions[token]
