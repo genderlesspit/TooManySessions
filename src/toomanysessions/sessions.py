@@ -17,6 +17,7 @@ class Session:
     created_at: float
     expires_at: float
     authenticated: bool
+    throttle: int = 0
     user: object = None
 
     @classmethod

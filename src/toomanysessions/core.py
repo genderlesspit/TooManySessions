@@ -16,9 +16,6 @@ def callback(request: Request, **kwargs):
     return Response(f"{kwargs}")
 
 class SessionedServer(ThreadedServer):
-    def __repr__(self):
-        return "[SessionedServer]"
-
     def __init__(
         self,
         host: str = "localhost",
@@ -103,6 +100,9 @@ class SessionedServer(ThreadedServer):
             for kwarg in kwargs:
                 log.debug(f"  - {kwarg}={kwargs.get(kwarg)}")
             return self.auth_callback_method(request, **kwargs)
+
+    def __repr__(self):
+        return "[SessionedServer]"
 
     @cached_property
     def auth_redirect_uri(self):
