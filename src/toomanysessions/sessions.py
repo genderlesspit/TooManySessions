@@ -14,11 +14,13 @@ from . import DEBUG
 @dataclass
 class Session:
     token: str
-    created_at: float
-    expires_at: float
-    authenticated: bool
+    created_at: float = None
+    expires_at: float = None
+    authenticated: bool = False
     throttle: int = 0
     user: object = None
+    code: str = None
+    token_data: str = None
 
     @classmethod
     def create(cls, token: str, max_age: int = 3600 * 8) -> 'Session':
@@ -59,14 +61,14 @@ class Sessions(APIRouter):
     def __init__(
         self,
         session_model: Type[Session] = Session,
-        authentication_model: Type[callable] = authenticate,
+        session_name: str = "session",
         verbose: bool = DEBUG
     ):
         super().__init__(prefix="/sessions")
         self.session_model = session_model
-        self.authentication_model = authentication_model
         self.verbose = verbose
         self.cache: dict[str, Session] = {}
+        self.session_name = session_name
 
         @self.get("")
         def get_session(request: Request):
@@ -77,7 +79,8 @@ class Sessions(APIRouter):
         token = session_or_token
         if isinstance(token, str):
             if self.verbose: log.debug(
-                f"{self}: Attempting to retrieve cached session object by token:\n  - key={token}")
+                f"{self}: Attempting to retrieve cached session object by token:\n  - key={token}"
+            )
             cached = self.cache.get(token)
             if cached is None:
                 if self.verbose: log.warning(f"{self}: Could not get session! Attempting to create...")
