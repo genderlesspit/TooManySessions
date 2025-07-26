@@ -58,7 +58,7 @@ class MicrosoftOAuth(APIRouter):
         self.sessions = sessions
         self.url = url
         if not tenant_id:
-            self.tenant = self.cfg.tenant_id
+            self.tenant_id = self.cfg.tenant_id
         else:
             setattr(self.cfg, tenant_id, tenant_id)
             self.cfg.write()
@@ -149,7 +149,7 @@ class MicrosoftOAuth(APIRouter):
         log.debug(f"Generated code_verifier: {code_verifier}")
         log.debug(f"Generated code_challenge: {code_challenge}")
 
-        base_url = f"https://login.microsoftonline.com/{self.tenant}/oauth2/v2.0/authorize"
+        base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/authorize"
 
         params = {
             "client_id": self.client_id,
@@ -176,7 +176,7 @@ class MicrosoftOAuth(APIRouter):
 
     def build_access_token_request(self, session):
         """Build the POST request to exchange authorization code for access token"""
-        url = f"https://login.microsoftonline.com/{self.tenant}/oauth2/v2.0/token"
+        url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
 
         try:
             data = {
