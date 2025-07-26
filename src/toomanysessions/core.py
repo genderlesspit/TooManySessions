@@ -232,7 +232,7 @@ class SessionedServer(ThreadedServer):
            503: "Service unavailable - we're temporarily down for maintenance."
        }
 
-       template = CWD_TEMPLATER.get_template('generic_popup.html')
+       template = CWD_TEMPLATER.get_template('popup.html')
 
        return template.render(
            title=f"Error {error_code}",
