@@ -11,9 +11,11 @@ from starlette.responses import Response, RedirectResponse, HTMLResponse, Stream
 from toomanyports import PortManager
 from toomanythreads import ThreadedServer
 
-from . import DEBUG, authenticate, Session, Sessions
+from . import DEBUG, authenticate, Session, Sessions, CWD_TEMPLATER
 from . import Users, User
-from .oauth import MicrosoftOAuth
+from .msft_graph_api import GraphAPI
+from .msft_oauth import MicrosoftOAuth, MSFTOAuthTokenResponse
+
 
 def no_auth(session: Session):
     session.authenticated = True
@@ -105,18 +107,9 @@ class SessionedServer(ThreadedServer):
         for route in self.routes:
             log.debug(f"{self}: Initialized route {route.path}")
 
-        @self.get("/")
-        def index(request: Request):
-            return JSONResponse({"Esther is": "chopped"})
-
-        @self.get("/authenticated/{token}")
-        def accessed(request: Request, token):
-            if token not in self.sessions.cache: return "You're evil"
-            return JSONResponse({"foo": "bar"})
-
         @self.middleware("http")
         async def middleware(request: Request, call_next):
-            log.warning(f"{self}: Got request with following cookies:\n  - cookies={request.cookies.items()}")
+            log.info(f"{self}: Got request with following cookies:\n  - cookies={request.cookies.items()}")
 
             if getattr(self.authentication_model, "bypass_routes", None):
                 log.debug(f"{self}: Acknowledged bypass_routes: {self.authentication_model.bypass_routes}")
@@ -128,20 +121,53 @@ class SessionedServer(ThreadedServer):
             if "/favicon.ico" in request.url.path:
                 return await call_next(request)
 
-            session = self.session_manager(request)
+            try:
 
-            if not session.authenticated:
-                log.warning(f"{self}: Session is not authenticated!")
-                if self.authentication_model == no_auth:
-                    auth: no_auth = self.authentication_model
-                    self.authentication_model(session)
-                elif isinstance(self.authentication_model, MicrosoftOAuth):
-                    auth: MicrosoftOAuth = self.authentication_model
-                    oauth_request = auth.build_auth_code_request(session)
-                    return HTMLResponse(self.redirect_html(oauth_request.url))
+                session = self.session_manager(request)
 
-            response = await call_next(request)
-            return response
+                if not session.authenticated:
+                    log.warning(f"{self}: Session is not authenticated!")
+                    if self.authentication_model == no_auth:
+                        self.authentication_model(session)
+                    elif isinstance(self.authentication_model, MicrosoftOAuth):
+                        auth: MicrosoftOAuth = self.authentication_model
+                        oauth_request = auth.build_auth_code_request(session)
+                        return HTMLResponse(self.redirect_html(oauth_request.url))
+
+                if not session.user:
+                    session.user = self.users.user_model.create(session)
+                    user = session.user
+                    if not session.user: raise RuntimeError
+                    if self.authentication_model == no_auth:
+                        pass
+                    elif isinstance(self.authentication_model, MicrosoftOAuth):
+                        metadata: MSFTOAuthTokenResponse = session.oauth_token_data
+                        session.graph = GraphAPI(metadata.access_token)
+                        user.me = await session.graph.me
+                        return HTMLResponse(self.authentication_model.welcome(user.me.displayName))
+
+                response = await call_next(request)
+
+                # Handle 404s with animated popup
+                if response.status_code == 404:
+                    return HTMLResponse(
+                        self.popup_404(
+                            message=f"The page '{request.url.path}' could not be found."
+                        ),
+                        status_code=404
+                    )
+
+                return response
+
+            except Exception as e:
+                log.error(f"{self}: Error processing request: {e}")
+                return HTMLResponse(
+                    self.popup_error(
+                        error_code=500,
+                        message="An unexpected error occurred while processing your request."
+                    ),
+                    status_code=500
+                )
 
 
     def session_manager(self, request: Request) -> Session:
@@ -164,55 +190,67 @@ class SessionedServer(ThreadedServer):
 
     @staticmethod
     def redirect_html(target_url):
-        """Generate HTML that redirects to OAuth URL"""
-        return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Redirecting to {target_url}...</title>
-        <meta http-equiv="refresh" content="0;url={target_url}">
-        <style>
-            body {{ 
-                font-family: Arial, sans-serif; 
-                text-align: center; 
-                padding: 50px;
-                background: #f5f5f5;
-            }}
-            .container {{ 
-                background: white; 
-                padding: 30px; 
-                border-radius: 8px; 
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                max-width: 400px;
-                margin: 0 auto;
-            }}
-            .spinner {{ 
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #0078d4;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-                margin: 20px auto;
-            }}
-            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-            a {{ color: #0078d4; text-decoration: none; }}
-            a:hover {{ text-decoration: underline; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>Redirecting to Microsoft</h2>
-            <div class="spinner"></div>
-            <p>If you are not redirected automatically, <a href="{target_url}">click here</a></p>
-        </div>
-        
-        <script>
-            // Redirect in same window after a brief delay
-            setTimeout(function() {{
-                window.location.href = '{target_url}';
-            }}, 1000);
-        </script>
-    </body>
-    </html>
-    """
+       """Generate HTML that redirects to OAuth URL"""
+       template = CWD_TEMPLATER.get_template('redirect.html')
+       return template.render(redirect_url=target_url)
+
+    def popup_404(self, message=None, redirect_delay=5000):
+       """Generate 404 popup HTML"""
+       template = CWD_TEMPLATER.get_template('popup.html')  # or whatever you name it
+
+       return template.render(
+           title="Page Not Found - 404",
+           header="404 - Page Not Found",
+           text=message or "The page you're looking for doesn't exist or has been moved.",
+           icon_content="404",
+           icon_color="linear-gradient(135deg, #ef4444, #dc2626)",
+           buttons=[
+               {
+                   "text": "Go Home",
+                   "onclick": f"window.location.href='{self.url or '/'}'",
+                   "class": ""
+               },
+               {
+                   "text": "Go Back",
+                   "onclick": "window.history.back()",
+                   "class": "secondary"
+               }
+           ],
+           footer_text="You'll be redirected automatically in 5 seconds",
+           redirect_url=self.url or "/",
+           redirect_delay_ms=redirect_delay
+       )
+
+    def popup_error(self, error_code=500, message=None):
+       """Generate generic error popup HTML"""
+       error_messages = {
+           400: "Bad request - something went wrong with your request.",
+           401: "Unauthorized - you need to log in to access this.",
+           403: "Forbidden - you don't have permission to access this.",
+           404: "Page not found - this page doesn't exist.",
+           500: "Internal server error - something went wrong on our end.",
+           503: "Service unavailable - we're temporarily down for maintenance."
+       }
+
+       template = CWD_TEMPLATER.get_template('generic_popup.html')
+
+       return template.render(
+           title=f"Error {error_code}",
+           header=f"Error {error_code}",
+           text=message or error_messages.get(error_code, "An unexpected error occurred."),
+           icon_content="⚠",
+           icon_color="linear-gradient(135deg, #f59e0b, #d97706)",
+           buttons=[
+               {
+                   "text": "Go Home",
+                   "onclick": f"window.location.href='{self.url or '/'}'",
+                   "class": ""
+               },
+               {
+                   "text": "Try Again",
+                   "onclick": "window.location.reload()",
+                   "class": "secondary"
+               }
+           ],
+           footer_text="Contact support if this problem persists"
+       )

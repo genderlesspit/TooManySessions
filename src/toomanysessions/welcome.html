@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Welcome</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        /* Initial Loading */
+        .intro-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite, introFade 4s ease-out 2s forwards;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes introFade {
+            0%, 70% { opacity: 1; }
+            100% { opacity: 0; pointer-events: none; }
+        }
+
+        .intro-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 50px 40px;
+            text-align: center;
+            max-width: 380px;
+            animation: cardFloat 2s ease-out;
+        }
+
+        @keyframes cardFloat {
+            0% {
+                transform: translateY(50px) scale(0.9);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .intro-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #1f2937, #374151);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+
+        .intro-subtitle {
+            color: #6b7280;
+            font-size: 16px;
+        }
+
+        /* Wipe Transition */
+        .wipe-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: 400% 400%;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation:
+                wipeIn 1.5s ease-out 4s both,
+                gradientShift 8s ease infinite 4s;
+            opacity: 0;
+        }
+
+        @keyframes wipeIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .wipe-content {
+            text-align: center;
+            animation: welcomeTextAppear 2s ease-out 5s both;
+        }
+
+        @keyframes welcomeTextAppear {
+            0% {
+                opacity: 0;
+                transform: translateY(40px);
+                letter-spacing: 10px;
+                filter: blur(5px);
+            }
+            60% {
+                opacity: 0.8;
+                transform: translateY(-5px);
+                letter-spacing: 2px;
+                filter: blur(1px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+                letter-spacing: normal;
+                filter: blur(0px);
+            }
+        }
+
+        .wipe-title {
+            font-size: clamp(48px, 8vw, 72px);
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            margin: 0;
+        }
+
+        /* Final Content */
+        .content {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 80%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(118, 75, 162, 0.1) 0%, transparent 50%),
+                linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: contentSlideUp 1.5s ease-out 7.5s both;
+        }
+
+        @keyframes contentSlideUp {
+            0% {
+                opacity: 0;
+                transform: translateY(60px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .final-content {
+            text-align: center;
+            animation: finalAppear 1s ease-out 8.5s both;
+        }
+
+        @keyframes finalAppear {
+            0% {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .final-title {
+            font-size: clamp(36px, 6vw, 56px);
+            font-weight: 700;
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            margin-bottom: 32px;
+        }
+
+        .ready-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 18px 36px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .ready-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        .ready-button:active {
+            transform: translateY(0);
+        }
+
+        /* Subtle floating particles */
+        .floating-particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .particle:nth-child(1) { width: 4px; height: 4px; left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { width: 6px; height: 6px; left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { width: 3px; height: 3px; left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { width: 5px; height: 5px; left: 40%; animation-delay: 0.5s; }
+        .particle:nth-child(5) { width: 4px; height: 4px; left: 50%; animation-delay: 1.5s; }
+        .particle:nth-child(6) { width: 7px; height: 7px; left: 60%; animation-delay: 3s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+
+        .click-subtitle {
+            color: rgba(255, 255, 255, 0.2);
+            font-size: 10px;
+            margin-top: 16px;
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body>
+    <!-- Initial Screen -->
+    <div class="intro-screen">
+        <div class="floating-particles">
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+        </div>
+
+        <div class="intro-content">
+            <h1 class="intro-title">Getting Ready</h1>
+            <p class="intro-subtitle">Preparing your experience</p>
+        </div>
+    </div>
+
+    <!-- Wipe Overlay -->
+    <div class="wipe-overlay">
+        <div class="floating-particles">
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+        </div>
+
+        <div class="wipe-content">
+            <h1 class="wipe-title">Welcome, {{user}}</h1>
+            <p class="click-subtitle">Click anywhere to begin</p>
+        </div>
+    </div>
+
+    <!-- Final Content -->
+    <div class="content">
+        <div class="final-content">
+            <h2 class="final-title">You're all set!</h2>
+            <button class="ready-button">Ready to begin</button>
+        </div>
+    </div>
+
+    <script>
+        // Simple button feedback
+        const button = document.querySelector('.ready-button');
+
+        button.addEventListener('click', () => {
+            button.style.transform = 'translateY(0) scale(0.98)';
+            setTimeout(() => {
+                button.style.transform = '';
+            }, 100);
+        });
+
+        // Redirect on any click
+        document.addEventListener('click', () => {
+            window.location.href = '{{ redirect_url }}';
+        });
+    </script>
+</body>
+</html>

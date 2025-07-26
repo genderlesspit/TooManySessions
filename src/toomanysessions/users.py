@@ -6,16 +6,19 @@ from loguru import logger as log
 from starlette.requests import Request
 from starlette.responses import Response
 
-from . import DEBUG
+from . import DEBUG, Session, CWD_TEMPLATER
 
 
 @dataclass
 class User:
-    token: str
+    session: Session
+    me: Any = None
 
     @classmethod
-    def create(cls, token):
-        return cls(token)
+    def create(cls, session):
+        inst = cls(session)
+        setattr(session, "user", inst)
+        return inst
 
 
 class Users(APIRouter):
@@ -33,9 +36,9 @@ class Users(APIRouter):
         self.user_setup = user_setup
         self.verbose = verbose
 
-        @self.get("")
-        def get_users(request: Request):
-            return self.cache
+        # @self.get("")
+        # def get_users(request: Request):
+        #     return self.cache
 
     def __getitem__(self, token: Any):
         if isinstance(token, str):

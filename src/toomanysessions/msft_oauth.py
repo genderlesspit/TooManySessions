@@ -17,6 +17,7 @@ from loguru import logger as log
 from starlette.responses import RedirectResponse, HTMLResponse
 from toomanyconfigs.core import TOMLConfig
 
+from . import CWD_TEMPLATER
 from .sessions import Sessions, Session
 
 DEBUG = True
@@ -26,6 +27,7 @@ DEBUG = True
 @dataclass
 class MSFTOAuthCFG(TOMLConfig):
     client_id: str = None
+    tenant_id: str = "common"
 
 @dataclass
 class MSFTOAuthCallback:
@@ -45,17 +47,20 @@ class MicrosoftOAuth(APIRouter):
     def __init__(
         self, sessions: Sessions,
         url: str,
-        # client_id: str,
-        tenant="common",
+        tenant_id = None,
         scopes: str = "User.Read"
     ):
-        self.sessions = sessions
-        self.url = url
-        self.tenant = tenant
-        self.scopes = scopes
-
         _ = self.cwd
         _ = self.cfg
+
+        self.sessions = sessions
+        self.url = url
+        if not tenant_id:
+            self.tenant = self.cfg.tenant_id
+        else:
+            setattr(self.cfg, tenant_id, tenant_id)
+            self.cfg.write()
+        self.scopes = scopes
 
         super().__init__(prefix="/microsoft_oauth")
 
@@ -78,15 +83,11 @@ class MicrosoftOAuth(APIRouter):
             async with httpx.AsyncClient() as client:
                 response = await client.send(token_request)
                 if response.status_code == 200:
-                    setattr(session, "oauth_token_data", response.json())
+                    creds = MSFTOAuthTokenResponse(**response.json())
+                    setattr(session, "oauth_token_data", creds)
                     log.debug(f"{self}: Successfully exchanged code for token")
                     setattr(session, "authenticated", True)
                     log.debug(f"{self}: Updated session:\n  - {session}")
-                    redirect = f"{self.url}/authenticated/{session.token}"
-                    response = RedirectResponse(
-                        url=self.url,
-                        status_code=200,
-                    )
                     key = self.sessions.session_name
                     response = HTMLResponse(self.login_successful)
                     response.set_cookie(
@@ -196,116 +197,12 @@ class MicrosoftOAuth(APIRouter):
 
     @cached_property
     def login_successful(self):
-        homepage = self.url
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Login Successful!</title>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    text-align: center;
-                    padding: 50px;
-                    background: #f5f5f5;
-                }}
-                .container {{
-                    background: white;
-                    padding: 30px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    max-width: 400px;
-                    margin: 0 auto;
-                }}
-                .success-icon {{
-                    width: 60px;
-                    height: 60px;
-                    margin: 20px auto;
-                    background: #28a745;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    animation: bounce 0.6s ease-in-out;
-                }}
-                .success-icon::after {{
-                    content: "✓";
-                    color: white;
-                    font-size: 30px;
-                    font-weight: bold;
-                }}
-                @keyframes bounce {{
-                    0% {{ transform: scale(0); }}
-                    50% {{ transform: scale(1.1); }}
-                    100% {{ transform: scale(1); }}
-                }}
-                h2 {{
-                    color: #28a745;
-                    margin: 20px 0 10px 0;
-                }}
-                p {{
-                    color: #666;
-                    margin: 10px 0;
-                }}
-                .redirect-message {{
-                    margin-top: 20px;
-                    font-size: 14px;
-                    color: #888;
-                }}
-                .home-button {{
-                    background: #0078d4;
-                    color: white;
-                    border: none;
-                    padding: 12px 24px;
-                    border-radius: 4px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    margin-top: 20px;
-                    transition: background 0.3s ease;
-                }}
-                .home-button:hover {{
-                    background: #106ebe;
-                }}
-                a {{
-                    color: #0078d4;
-                    text-decoration: none;
-                }}
-                a:hover {{
-                    text-decoration: underline;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="success-icon"></div>
-                <h2>Login Successful!</h2>
-                <p>You have been successfully authenticated with Microsoft.</p>
-                <button class="home-button" onclick="returnHome()">Return to Homepage</button>
-                <div class="redirect-message">
-                    <p>You can also close this window and return to the application.</p>
-                </div>
-            </div>
+       template = CWD_TEMPLATER.get_template('redirect.html')
+       return template.render(redirect_url=self.url)
 
-            <script>
-                function returnHome() {{
-                    // If this is a popup window, close it and redirect parent
-                    if (window.opener && window.opener !== window) {{
-                        window.opener.location.href = '{homepage}';
-                        window.close();
-                    }} else {{
-                        // If normal window, just redirect
-                        window.location.href = '{homepage}';
-                    }}
-                }}
-
-                // Optional: Auto-close window after a few seconds if it was opened as a popup
-            setTimeout(function() {{
-                // Check if this window was opened as a popup
-                if (window.opener && window.opener !== window) {{
-                    window.close();
-                }}
-            }}, 10000);
-        </script>
-    </body>
-    </html>
-    """
+    def welcome(self, name):
+        template = CWD_TEMPLATER.get_template('welcome.html')
+        return template.render(
+            user=name,
+            redirect_url=self.url
+        )

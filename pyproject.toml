@@ -1,9 +1,9 @@
 [project]
 name = "toomanysessions"
-version = "0.1.7"
+version = "0.1.8"
 description = ""
 authors = [
-    {name = "genderlesspit",email = "59433707+genderlesspit@users.noreply.github.com"}
+    {name = "Miles Copeland Luce"}
 ]
 readme = "README.md"
 requires-python = ">=3.13,<4.0"
@@ -13,7 +13,8 @@ dependencies = [
     "starlette (>=0.47.2,<0.48.0)",
     "toomanyports (>=0.1.1,<0.2.0)",
     "loguru (>=0.7.3,<0.8.0)",
-    "httpx (>=0.28.1,<0.29.0)"
+    "httpx (>=0.28.1,<0.29.0)",
+    "jinja2 (>=3.1.6,<4.0.0)"
 ]
 
 [tool.poetry]

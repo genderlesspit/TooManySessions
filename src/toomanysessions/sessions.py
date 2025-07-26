@@ -21,7 +21,7 @@ class Session:
     throttle: int = 0
     user: object = None
     code: str = None
-    oauth_token_data: str = None
+    oauth_token_data: Any = None
 
     @classmethod
     def create(cls, token: str, max_age: int = 3600 * 8) -> 'Session':
@@ -70,9 +70,9 @@ class Sessions(APIRouter):
         self.cache: dict[str, Session] = {}
         self.session_name = session_name
 
-        @self.get("")
-        def get_session(request: Request):
-            return self.cache
+        # @self.get("")
+        # def get_session(request: Request):
+        #     return self.cache
 
     def __getitem__(self, session_or_token: Any):
         if isinstance(session_or_token, Session): session_or_token: str = session_or_token.token
