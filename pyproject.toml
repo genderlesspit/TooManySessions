@@ -1,6 +1,6 @@
 [project]
 name = "toomanysessions"
-version = "0.1.8"
+version = "0.1.9"
 description = ""
 authors = [
     {name = "Miles Copeland Luce"}
@@ -19,6 +19,7 @@ dependencies = [
 
 [tool.poetry]
 packages = [{include = "toomanysessions", from = "src"}]
+include = ["toomanysessions/*.html"]
 
 
 [build-system]

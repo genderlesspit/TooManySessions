@@ -48,9 +48,11 @@ class MicrosoftOAuth(APIRouter):
         self, sessions: Sessions,
         url: str,
         tenant_id = None,
-        scopes: str = "User.Read"
+        scopes: str = "User.Read",
+        **cfg_kwargs
     ):
         _ = self.cwd
+        self.cfg_kwargs = cfg_kwargs
         _ = self.cfg
 
         self.sessions = sessions
@@ -126,7 +128,7 @@ class MicrosoftOAuth(APIRouter):
 
     @cached_property
     def cfg(self):
-        return MSFTOAuthCFG.from_toml(self.cwd.cfg_file)
+        return MSFTOAuthCFG.from_toml(self.cwd.cfg_file, **self.cfg_kwargs)
 
     @cached_property
     def client_id(self):
