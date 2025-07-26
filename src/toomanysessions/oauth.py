@@ -67,7 +67,7 @@ class MicrosoftOAuth(APIRouter):
                 log.debug(f"  - {param}={str(params[param])[:10]}...")
             try:
                 params = MSFTOAuthCallback(**params)
-                session = self.sessions.cache.get(params.state)
+                session = self.sessions[params.state]
                 if not session: raise Exception
                 if not hasattr(session, 'verifier') or not session.verifier: raise Exception #type: ignore
             except Exception as e:
@@ -78,15 +78,23 @@ class MicrosoftOAuth(APIRouter):
             async with httpx.AsyncClient() as client:
                 response = await client.send(token_request)
                 if response.status_code == 200:
-                    session.oauth_token_data = response.json()
+                    setattr(session, "oauth_token_data", response.json())
                     log.debug(f"{self}: Successfully exchanged code for token")
                     setattr(session, "authenticated", True)
-                    html_response = HTMLResponse(self.login_successful)
-                    html_response.set_cookie(
-                        key=str(self.sessions.session_name),  # Your session cookie name
-                        value=session.token,    # The session token
+                    log.debug(f"{self}: Updated session:\n  - {session}")
+                    redirect = f"{self.url}/authenticated/{session.token}"
+                    response = RedirectResponse(
+                        url=self.url,
+                        status_code=200,
                     )
-                    return html_response
+                    key = self.sessions.session_name
+                    response = HTMLResponse(self.login_successful)
+                    response.set_cookie(
+                        key=key,
+                        value=session.token,
+                        httponly=True
+                    )
+                    return response
                 else:
                     log.error(f"Token exchange failed: {response.status_code} - {response.text}")
                     raise Exception(f"Token exchange failed: {response.status_code}")
@@ -189,22 +197,22 @@ class MicrosoftOAuth(APIRouter):
     @cached_property
     def login_successful(self):
         homepage = self.url
-        return f"""       
+        return f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Login Successful!</title>
             <style>
-                body {{ 
-                    font-family: Arial, sans-serif; 
-                    text-align: center; 
+                body {{
+                    font-family: Arial, sans-serif;
+                    text-align: center;
                     padding: 50px;
                     background: #f5f5f5;
                 }}
-                .container {{ 
-                    background: white; 
-                    padding: 30px; 
-                    border-radius: 8px; 
+                .container {{
+                    background: white;
+                    padding: 30px;
+                    border-radius: 8px;
                     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                     max-width: 400px;
                     margin: 0 auto;
@@ -258,12 +266,12 @@ class MicrosoftOAuth(APIRouter):
                 .home-button:hover {{
                     background: #106ebe;
                 }}
-                a {{ 
-                    color: #0078d4; 
-                    text-decoration: none; 
+                a {{
+                    color: #0078d4;
+                    text-decoration: none;
                 }}
-                a:hover {{ 
-                    text-decoration: underline; 
+                a:hover {{
+                    text-decoration: underline;
                 }}
             </style>
         </head>
@@ -277,7 +285,7 @@ class MicrosoftOAuth(APIRouter):
                     <p>You can also close this window and return to the application.</p>
                 </div>
             </div>
-            
+
             <script>
                 function returnHome() {{
                     // If this is a popup window, close it and redirect parent
@@ -289,7 +297,7 @@ class MicrosoftOAuth(APIRouter):
                         window.location.href = '{homepage}';
                     }}
                 }}
-    
+
                 // Optional: Auto-close window after a few seconds if it was opened as a popup
             setTimeout(function() {{
                 // Check if this window was opened as a popup

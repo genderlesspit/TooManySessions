@@ -14,13 +14,14 @@ from . import DEBUG
 @dataclass
 class Session:
     token: str
+    request: Any = None
     created_at: float = None
     expires_at: float = None
     authenticated: bool = False
     throttle: int = 0
     user: object = None
     code: str = None
-    token_data: str = None
+    oauth_token_data: str = None
 
     @classmethod
     def create(cls, token: str, max_age: int = 3600 * 8) -> 'Session':
@@ -55,7 +56,6 @@ async def authenticate(session: Session, session_name: str, redirect_uri: str) -
         log.error(f"Authentication failed: {e}")
         session.authenticated = False
     return session
-
 
 class Sessions(APIRouter):
     def __init__(

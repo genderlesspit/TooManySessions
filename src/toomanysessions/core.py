@@ -7,7 +7,7 @@ from typing import Callable, Any, Type, List, Coroutine
 from fastapi import APIRouter
 from loguru import logger as log
 from starlette.requests import Request
-from starlette.responses import Response, RedirectResponse, HTMLResponse
+from starlette.responses import Response, RedirectResponse, HTMLResponse, StreamingResponse, JSONResponse
 from toomanyports import PortManager
 from toomanythreads import ThreadedServer
 
@@ -19,6 +19,7 @@ def no_auth(session: Session):
     session.authenticated = True
     return session
 
+REQUEST = None
 # def callback(request: Request, **kwargs):
 #     log.debug(f"Dummy callback method executed!")
 #     return Response(f"{kwargs}")
@@ -56,8 +57,9 @@ class SessionedServer(ThreadedServer):
         self.verbose = verbose
 
         self.sessions = Sessions(
-            self.session_model,
-            verbose,
+            session_model=self.session_model,
+            session_name=self.session_name,
+            verbose=self.verbose
         )
 
         if isinstance(authentication_model, str):
@@ -103,24 +105,30 @@ class SessionedServer(ThreadedServer):
         for route in self.routes:
             log.debug(f"{self}: Initialized route {route.path}")
 
+        @self.get("/")
+        def index(request: Request):
+            return JSONResponse({"Esther is": "chopped"})
+
+        @self.get("/authenticated/{token}")
+        def accessed(request: Request, token):
+            if token not in self.sessions.cache: return "You're evil"
+            return JSONResponse({"foo": "bar"})
+
         @self.middleware("http")
         async def middleware(request: Request, call_next):
-            # Skip auth middleware for bypass routes
+            log.warning(f"{self}: Got request with following cookies:\n  - cookies={request.cookies.items()}")
+
             if getattr(self.authentication_model, "bypass_routes", None):
                 log.debug(f"{self}: Acknowledged bypass_routes: {self.authentication_model.bypass_routes}")
                 if request.url.path in self.authentication_model.bypass_routes:
                     log.debug(f"{self}: Bypassing auth middleware for {request.url}")
                     return await call_next(request)
-
-            # Skip for static files
+            if "/authenticated/" in request.url.path:
+                return await call_next(request)
             if "/favicon.ico" in request.url.path:
                 return await call_next(request)
 
-            # Get session from request state (set by session middleware)
-            session = getattr(request.state, 'session', None)
-            if not session:
-                # Fallback if session middleware didn't run
-                temp_response, session = self.session_manager(request)
+            session = self.session_manager(request)
 
             if not session.authenticated:
                 log.warning(f"{self}: Session is not authenticated!")
@@ -135,26 +143,24 @@ class SessionedServer(ThreadedServer):
             response = await call_next(request)
             return response
 
-    def session_manager(self, request: Request, response=None) -> tuple[Response, Session]:
-        if response is None:
-            response = Response()
 
-        # For OAuth callback, use state parameter as session token
+    def session_manager(self, request: Request) -> Session:
         if "/microsoft_oauth/callback" in request.url.path:
             token = request.query_params.get("state")
+            log.warning(token)
             if not token:
                 return Response("Missing state parameter", status_code=400), None
         else:
-            # Normal session management
-            token = request.cookies.get(self.session_name)
+            token = request.cookies.get(self.session_name) #"session":
             if not token:
                 token = secrets.token_urlsafe(32)
-
-        response.set_cookie(self.session_name, token, max_age=self.session_age)
         session = self.sessions[token]
+        setattr(session, "request", request)
+        session.request.cookies[self.session_name] = session.token
+        log.debug(f"{self}: Associated session with request, {request}\n  - cookies={request.cookies}")
         if session.authenticated:
             log.debug(f"{self}: This session was marked as authenticated!")
-        return response, session
+        return session
 
     @staticmethod
     def redirect_html(target_url):
