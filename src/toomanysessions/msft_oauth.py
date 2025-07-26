@@ -47,21 +47,16 @@ class MicrosoftOAuth(APIRouter):
     def __init__(
         self, sessions: Sessions,
         url: str,
-        tenant_id = None,
         scopes: str = "User.Read",
         **cfg_kwargs
     ):
         _ = self.cwd
         self.cfg_kwargs = cfg_kwargs
         _ = self.cfg
+        self.tenant_id = self.cfg.tenant_id
 
         self.sessions = sessions
         self.url = url
-        if not tenant_id:
-            self.tenant_id = self.cfg.tenant_id
-        else:
-            setattr(self.cfg, tenant_id, tenant_id)
-            self.cfg.write()
         self.scopes = scopes
 
         super().__init__(prefix="/microsoft_oauth")
