@@ -37,6 +37,7 @@ class SessionedServer(ThreadedServer):
         authentication_model: str | Type[APIRouter] | None = "msft",
         user_model: Type[User] = User,
         verbose: bool = DEBUG,
+        **kwargs
     ) -> None:
         """
         :param host:
@@ -54,15 +55,19 @@ class SessionedServer(ThreadedServer):
         self.session_name = session_name
         self.session_age = session_age
         self.session_model = session_model
-        self.authentication_model = authentication_model
-        # self.auth_callback_method = callback_method
         self.verbose = verbose
-        self.sessions = Sessions(
-            session_model=self.session_model,
-            session_name=self.session_name,
-            verbose=self.verbose
-        )
 
+        for kwarg in kwargs:
+            setattr(self, kwarg, kwargs.get(kwarg))
+
+        if not getattr(self, "sessions", None):
+            self.sessions = Sessions(
+                session_model=self.session_model,
+                session_name=self.session_name,
+                verbose=self.verbose
+            )
+
+        self.authentication_model = authentication_model
         if isinstance(authentication_model, str):
             if authentication_model == "msft":
                 self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
@@ -80,10 +85,6 @@ class SessionedServer(ThreadedServer):
 
         if not self.session_model.create:
             raise ValueError(f"{self}: Session models require a create function!")
-        # if not isinstance(self.authentication_model, Callable):
-        #     raise TypeError(f"{self}: Authentication models must be a function, got {type(self.authentication_model)} instead!")
-        # if not isinstance(self.authentication_model(), Coroutine):
-        #     raise TypeError(f"{self}: Authentication models must be async!, got {type(self.authentication_model)} instead!")
         if not self.user_model.create:
             raise ValueError(f"{self}: User models require a create function!")
 
