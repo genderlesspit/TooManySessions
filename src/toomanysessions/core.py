@@ -93,6 +93,7 @@ class SessionedServer(ThreadedServer):
             port = self.port,
             verbose=self.verbose
         )
+
         if self.verbose:
             try:
                 log.success(f"{self}: Initialized successfully!\n  - host={self.host}\n  - port={self.port}")

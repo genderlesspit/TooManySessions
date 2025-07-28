@@ -175,7 +175,7 @@ class MicrosoftOAuth(APIRouter):
             "response_mode": "query",
             "scope": self.scopes,
             "state": session.token,
-            "code_challenge": code_challenge,  # Only the challenge goes in URL
+            "code_challenge": code_challenge,
             "code_challenge_method": "S256"
         }
 
@@ -189,7 +189,7 @@ class MicrosoftOAuth(APIRouter):
         client = httpx.Client()
         request = client.build_request("GET", url)
 
-        return request  # Don't return the verifier - it's stored in session
+        return request
 
     def build_access_token_request(self, session):
         """Build the POST request to exchange authorization code for access token"""
