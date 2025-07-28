@@ -1,6 +1,6 @@
 [project]
 name = "toomanysessions"
-version = "0.1.96"
+version = "0.1.97"
 description = ""
 authors = [
     {name = "Miles Copeland Luce"}
@@ -14,7 +14,9 @@ dependencies = [
     "toomanyports (>=0.1.1,<0.2.0)",
     "loguru (>=0.7.3,<0.8.0)",
     "httpx (>=0.28.1,<0.29.0)",
-    "jinja2 (>=3.1.6,<4.0.0)"
+    "jinja2 (>=3.1.6,<4.0.0)",
+    "pkce (>=1.0.3,<2.0.0)",
+    "toomanyconfigs (>=0.1.3,<0.2.0)"
 ]
 
 [tool.poetry]
