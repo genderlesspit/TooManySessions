@@ -57,7 +57,6 @@ class SessionedServer(ThreadedServer):
         self.authentication_model = authentication_model
         # self.auth_callback_method = callback_method
         self.verbose = verbose
-
         self.sessions = Sessions(
             session_model=self.session_model,
             session_name=self.session_name,
@@ -66,10 +65,10 @@ class SessionedServer(ThreadedServer):
 
         if isinstance(authentication_model, str):
             if authentication_model == "msft":
-                self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self.sessions, self.url)
+                self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
         if isinstance(authentication_model, APIRouter):
             self.authentication_model = authentication_model
-        if not authentication_model:
+        if authentication_model is None:
             self.authentication_model = no_auth
         log.debug(f"{self}: Initialized authentication model as {self.authentication_model}")
 

@@ -28,6 +28,7 @@ DEBUG = True
 class MSFTOAuthCFG(TOMLConfig):
     client_id: str = None
     tenant_id: str = "common"
+    scopes: str = "User.Read"
 
 @dataclass
 class MSFTOAuthCallback:
@@ -45,19 +46,21 @@ class MSFTOAuthTokenResponse:
 
 class MicrosoftOAuth(APIRouter):
     def __init__(
-        self, sessions: Sessions,
-        url: str,
-        scopes: str = "User.Read",
+        self, 
+        server,
         **cfg_kwargs
     ):
+        self.server = server
+        from . import SessionedServer
+        if not isinstance(server, SessionedServer): raise TypeError("Passed server is not an instance of Sessioned Server")
+
         _ = self.cwd
         self.cfg_kwargs = cfg_kwargs
         _ = self.cfg
         self.tenant_id = self.cfg.tenant_id
-
-        self.sessions = sessions
-        self.url = url
-        self.scopes = scopes
+        self.scopes = self.cfg.scopes
+        self.sessions = self.server.sessions
+        self.url = self.server.url
 
         super().__init__(prefix="/microsoft_oauth")
 
@@ -70,10 +73,30 @@ class MicrosoftOAuth(APIRouter):
             try:
                 params = MSFTOAuthCallback(**params)
                 session = self.sessions[params.state]
-                if not session: raise Exception
-                if not hasattr(session, 'verifier') or not session.verifier: raise Exception #type: ignore
+                
+                if not session:
+                    log.error("Session not found for state")
+                    raise ValueError("Invalid session state")
+                    
+                log.debug(f"Retrieved session: {session}")
+                
+                if not hasattr(session, 'verifier'):
+                    log.error(f"{self}: Session missing verifier attribute")
+                    log.debug(f"{self}: Session attributes: {[attr for attr in dir(session) if not attr.startswith('_')]}")
+                    raise ValueError("OAuth session missing PKCE verifier")
+                    
+                if not session.verifier:
+                    log.error("Session verifier is empty")
+                    raise ValueError("OAuth session verifier is empty")
+                    
+                log.debug(f"Using verifier: {session.verifier[:10]}...")
+                
             except Exception as e:
-                return {"error": f"{e}"}
+                log.error(f"OAuth callback failed: {type(e).__name__}: {str(e)}")
+                from . import SessionedServer
+                server: SessionedServer = self.server
+                return server.popup_error(500, e)
+        
             session.code = params.code
 
             token_request = self.build_access_token_request(session) #type: ignore
@@ -138,11 +161,10 @@ class MicrosoftOAuth(APIRouter):
         code_verifier = pkce.generate_code_verifier(length=43)
         code_challenge = pkce.get_code_challenge(code_verifier)
 
-        # Store the verifier in the session (server-side, secure)
-        session.verifier = code_verifier
-
-        log.debug(f"Generated code_verifier: {code_verifier}")
-        log.debug(f"Generated code_challenge: {code_challenge}")
+        session.verifier = code_verifier  # Direct assignment instead of setattr
+        log.debug(f"{self}: Stored verifier in session: {session.verifier}...")
+        log.debug(f"{self}: Session after storing verifier: {session}")
+        log.debug(f"{self}: Generated code_challenge: {code_challenge}")
 
         base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/authorize"
 
