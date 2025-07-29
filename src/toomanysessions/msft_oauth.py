@@ -24,7 +24,6 @@ DEBUG = True
 
 
 # noinspection PyUnresolvedReferences
-@dataclass
 class MSFTOAuthCFG(TOMLConfig):
     client_id: str = None
     tenant_id: str = "common"
