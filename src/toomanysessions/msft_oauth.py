@@ -146,7 +146,7 @@ class MicrosoftOAuth(APIRouter):
 
     @cached_property
     def cfg(self):
-        return MSFTOAuthCFG.from_toml(self.cwd.cfg_file, **self.cfg_kwargs)
+        return MSFTOAuthCFG.create(self.cwd.cfg_file, **self.cfg_kwargs)
 
     @cached_property
     def client_id(self):
