@@ -1,17 +1,14 @@
-import asyncio
 import secrets
-import time
 from functools import cached_property
-from typing import Callable, Any, Type, List, Coroutine
+from typing import Type
 
 from fastapi import APIRouter
 from loguru import logger as log
 from starlette.requests import Request
-from starlette.responses import Response, RedirectResponse, HTMLResponse, StreamingResponse, JSONResponse
-from toomanyports import PortManager
+from starlette.responses import Response, RedirectResponse, HTMLResponse
 from toomanythreads import ThreadedServer
 
-from . import DEBUG, authenticate, Session, Sessions, CWD_TEMPLATER
+from . import DEBUG, Session, Sessions, CWD_TEMPLATER
 from . import Users, User
 from .msft_graph_api import GraphAPI
 from .msft_oauth import MicrosoftOAuth, MSFTOAuthTokenResponse
@@ -21,35 +18,29 @@ def no_auth(session: Session):
     session.authenticated = True
     return session
 
+
 REQUEST = None
+
+
 # def callback(request: Request, **kwargs):
 #     log.debug(f"Dummy callback method executed!")
 #     return Response(f"{kwargs}")
 
 class SessionedServer(ThreadedServer):
     def __init__(
-        self,
-        host: str = "localhost",
-        port: int = None,
-        session_name: str = "session",
-        session_age: int = (3600 * 8),
-        session_model: Type[Session] = Session,
-        authentication_model: str | Type[APIRouter] | None = "msft",
-        user_model: Type[User] = User,
-        verbose: bool = DEBUG,
-        **kwargs
+            self,
+            host: str = "localhost",
+            port: int = None,
+            session_name: str = "session",
+            session_age: int = (3600 * 8),
+            session_model: Type[Session] = Session,
+            authentication_model: str | Type[APIRouter] | None = "msft",
+            user_model: Type[User] = User,
+            user_whitelist: list = None,
+            tenant_whitelist: list = None,
+            verbose: bool = DEBUG,
+            **kwargs
     ) -> None:
-        """
-        :param host:
-        :param port:
-        :param session_name:
-        :param session_age:
-        :param session_model:
-        :param authentication_model: msft
-        :param callback_method:
-        :param user_model:
-        :param verbose:
-        """
         self.host = host
         self.port = port
         self.session_name = session_name
@@ -82,6 +73,10 @@ class SessionedServer(ThreadedServer):
             self.user_model,
             self.user_model.create,
         )
+        self.user_whitelist = user_whitelist
+        log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
+        self.tenant_whitelist = tenant_whitelist
+        log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
 
         if not self.session_model.create:
             raise ValueError(f"{self}: Session models require a create function!")
@@ -89,8 +84,8 @@ class SessionedServer(ThreadedServer):
             raise ValueError(f"{self}: User models require a create function!")
 
         super().__init__(
-            host = self.host,
-            port = self.port,
+            host=self.host,
+            port=self.port,
             verbose=self.verbose
         )
 
@@ -121,9 +116,10 @@ class SessionedServer(ThreadedServer):
                 return await call_next(request)
             if "/favicon.ico" in request.url.path:
                 return await call_next(request)
+            if "/logout" in request.url.path:
+                return await call_next(request)
 
             try:
-
                 session = self.session_manager(request)
 
                 if not session.authenticated:
@@ -145,7 +141,50 @@ class SessionedServer(ThreadedServer):
                         metadata: MSFTOAuthTokenResponse = session.oauth_token_data
                         session.graph = GraphAPI(metadata.access_token)
                         user.me = await session.graph.me
-                        return HTMLResponse(self.authentication_model.welcome(user.me.displayName))
+                        user.org = await session.graph.organization
+
+                if (getattr(self, 'tenant_whitelist', None) is not None) or (
+                        getattr(self, 'user_whitelist', None) is not None):
+                    log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
+                    log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
+                    log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
+                    if isinstance(self.authentication_model, MicrosoftOAuth):
+                        if not session.whitelisted:
+                            try:
+                                if getattr(self, 'tenant_whitelist', None) is not None:
+                                    log.debug(f"{self}: Checking tenant id...")
+                                    tenant = session.user.org.id
+                                    log.debug(f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
+                                    if tenant not in self.tenant_whitelist:
+                                        log.warning(
+                                            f"{self}: Unauthorized tenant {tenant} attempted to access the website!")
+                                        raise PermissionError
+                                else:
+                                    log.debug(f"{self}: No tenant whitelist. Skipping...")
+
+                                # Then check user whitelist
+                                if getattr(self, 'user_whitelist', None) is not None:
+                                    log.debug(f"{self}: Checking user's email...")
+                                    user = session.user.me.userPrincipalName
+                                    if user not in self.user_whitelist:
+                                        log.warning(
+                                            f"{self}: Unauthorized user {session.user.me.userPrincipalName} attempted to access the website!")
+                                        raise PermissionError
+                                else:
+                                    log.debug(f"{self}: No user whitelist. Skipping...")
+
+                            except PermissionError:
+                                return HTMLResponse(
+                                    self.popup_unauthorized("You're not authorized to access this website.\n"
+                                                            "Either log into a different account or contact a system administrator."))
+
+                            setattr(session, "whitelisted", True)
+
+                if not session.welcomed:
+                    log.warning(f"{self}: User has yet to be welcomed!")
+                    if isinstance(self.authentication_model, MicrosoftOAuth):
+                        setattr(session, "welcomed", True)
+                        return HTMLResponse(self.authentication_model.welcome(session.user.me.displayName))
 
                 response = await call_next(request)
 
@@ -170,15 +209,52 @@ class SessionedServer(ThreadedServer):
                     status_code=500
                 )
 
+        @self.get("/logout")
+        def logout(request: Request):
+            cookie = request.cookies.get(self.session_name)
+            session = self.sessions.cache.get(cookie)
+            if not session:
+                return HTMLResponse(self.popup_error(401, "You are already logged out!"))
+            if session:
+                log.debug(f"Logging out session: {cookie}")
 
-    def session_manager(self, request: Request) -> Session:
+                # Build Microsoft logout request
+                if isinstance(self.authentication_model, MicrosoftOAuth):
+                    post_logout_redirect_uri = self.logout_uri + "/complete"
+                    logout_request = self.authentication_model.build_logout_request(session, post_logout_redirect_uri)
+
+                # Delete session from cache
+                del self.sessions.cache[cookie]
+
+                # Create redirect response and delete cookie
+                response = RedirectResponse(url=logout_request.url, status_code=302)
+                response.delete_cookie(self.session_name, path="/")
+                return response
+
+        @self.get("/logout/complete")
+        def logout(request: Request):
+            popup_html = self.popup_generic(
+                popup_type="success",
+                header="Logged Out",
+                message="You have been successfully logged out.",
+                buttons=[
+                    {
+                        "text": "Go to Login",
+                        "onclick": f"window.location.href='{self.url or '/'}'",
+                        "class": ""
+                    }
+                ]
+            )
+            return HTMLResponse(popup_html)
+
+    def session_manager(self, request: Request) -> Session | Response:
         if "/microsoft_oauth/callback" in request.url.path:
             token = request.query_params.get("state")
             log.warning(token)
             if not token:
-                return Response("Missing state parameter", status_code=400), None
+                return Response("Missing state parameter", status_code=400)
         else:
-            token = request.cookies.get(self.session_name) #"session":
+            token = request.cookies.get(self.session_name)  # "session":
             if not token:
                 token = secrets.token_urlsafe(32)
         session = self.sessions[token]
@@ -191,67 +267,179 @@ class SessionedServer(ThreadedServer):
 
     @staticmethod
     def redirect_html(target_url):
-       """Generate HTML that redirects to OAuth URL"""
-       template = CWD_TEMPLATER.get_template('redirect.html')
-       return template.render(redirect_url=target_url)
+        """Generate HTML that redirects to OAuth URL"""
+        template = CWD_TEMPLATER.get_template('redirect.html')
+        return template.render(redirect_url=target_url)
+
+    @cached_property
+    def logout_uri(self):
+        return self.url + "/logout"
 
     def popup_404(self, message=None, redirect_delay=5000):
-       """Generate 404 popup HTML"""
-       template = CWD_TEMPLATER.get_template('popup.html')  # or whatever you name it
+        """Generate 404 popup HTML"""
+        template = CWD_TEMPLATER.get_template('popup.html')  # or whatever you name it
 
-       return template.render(
-           title="Page Not Found - 404",
-           header="404 - Page Not Found",
-           text=message or "The page you're looking for doesn't exist or has been moved.",
-           icon_content="404",
-           icon_color="linear-gradient(135deg, #ef4444, #dc2626)",
-           buttons=[
-               {
-                   "text": "Go Home",
-                   "onclick": f"window.location.href='{self.url or '/'}'",
-                   "class": ""
-               },
-               {
-                   "text": "Go Back",
-                   "onclick": "window.history.back()",
-                   "class": "secondary"
-               }
-           ],
-           footer_text="You'll be redirected automatically in 5 seconds",
-           redirect_url=self.url or "/",
-           redirect_delay_ms=redirect_delay
-       )
+        return template.render(
+            title="Page Not Found - 404",
+            header="404 - Page Not Found",
+            text=message or "The page you're looking for doesn't exist or has been moved.",
+            icon_content="404",
+            icon_color="linear-gradient(135deg, #ef4444, #dc2626)",
+            buttons=[
+                {
+                    "text": "Go Home",
+                    "onclick": f"window.location.href='{self.url or '/'}'",
+                    "class": ""
+                },
+                {
+                    "text": "Go Back",
+                    "onclick": "window.history.back()",
+                    "class": "secondary"
+                }
+            ],
+            footer_text="You'll be redirected automatically in 5 seconds",
+            redirect_url=self.url or "/",
+            redirect_delay_ms=redirect_delay
+        )
 
     def popup_error(self, error_code=500, message=None):
-       """Generate generic error popup HTML"""
-       error_messages = {
-           400: "Bad request - something went wrong with your request.",
-           401: "Unauthorized - you need to log in to access this.",
-           403: "Forbidden - you don't have permission to access this.",
-           404: "Page not found - this page doesn't exist.",
-           500: "Internal server error - something went wrong on our end.",
-           503: "Service unavailable - we're temporarily down for maintenance."
-       }
+        """Generate generic error popup HTML"""
+        error_messages = {
+            400: "Bad request - something went wrong with your request.",
+            401: "Unauthorized - you need to log in to access this.",
+            403: "Forbidden - you don't have permission to access this.",
+            404: "Page not found - this page doesn't exist.",
+            500: "Internal server error - something went wrong on our end.",
+            503: "Service unavailable - we're temporarily down for maintenance."
+        }
 
-       template = CWD_TEMPLATER.get_template('popup.html')
+        template = CWD_TEMPLATER.get_template('popup.html')
 
-       return template.render(
-           title=f"Error {error_code}",
-           header=f"Error {error_code}",
-           text=message or error_messages.get(error_code, "An unexpected error occurred."),
-           icon_content="⚠",
-           icon_color="linear-gradient(135deg, #f59e0b, #d97706)",
-           buttons=[
-               {
-                   "text": "Go Home",
-                   "onclick": f"window.location.href='{self.url or '/'}'",
-                   "class": ""
-               },
-               {
-                   "text": "Try Again",
-                   "onclick": "window.location.reload()",
-                   "class": "secondary"
-               }
-           ],
-           footer_text="Contact support if this problem persists"
-       )
+        return template.render(
+            title=f"Error {error_code}",
+            header=f"Error {error_code}",
+            text=message or error_messages.get(error_code, "An unexpected error occurred."),
+            icon_content="⚠",
+            icon_color="linear-gradient(135deg, #f59e0b, #d97706)",
+            buttons=[
+                {
+                    "text": "Go Home",
+                    "onclick": f"window.location.href='{self.url or '/'}'",
+                    "class": ""
+                },
+                {
+                    "text": "Try Again",
+                    "onclick": "window.location.reload()",
+                    "class": "secondary"
+                }
+            ],
+            footer_text="Contact support if this problem persists"
+        )
+
+    def popup_unauthorized(self, message=None):
+        """Generate unauthorized popup HTML"""
+        template = CWD_TEMPLATER.get_template('popup.html')
+
+        return template.render(
+            title="Unauthorized Access",
+            header="Unauthorized Access",
+            text=message or "You do not have permission to access this resource. Please check your credentials and try again.",
+            icon_content="⚠",
+            icon_color="linear-gradient(135deg, #dc2626, #991b1b)",
+            buttons=[
+                {
+                    "text": "Try Again",
+                    "onclick": "window.location.reload()",
+                    "class": ""
+                },
+                {
+                    "text": "Logout",
+                    "onclick": f"window.location.href='{self.logout_uri}'",
+                    "class": "secondary"
+                }
+            ],
+            footer_text="Contact support if this issue persists"
+        )
+
+    def popup_generic(self, popup_type="info", title=None, header=None, message=None,
+                      icon_content=None, icon_color=None, buttons=None, footer_text=None,
+                      auto_close_ms=None, redirect_url=None, redirect_delay_ms=None,
+                      show_loading_dots=False):
+        """Generate generic popup HTML with customizable styling and content"""
+        from loguru import logger as log
+
+        log.debug(f"Generating {popup_type} popup with title: {title}")
+
+        # Default configurations for different popup types
+        popup_configs = {
+            "info": {
+                "title": "Information",
+                "header": "Information",
+                "message": "Here's some information for you.",
+                "icon_content": "ℹ",
+                "icon_color": "linear-gradient(135deg, #0078d4, #005a9e)",
+                "footer_text": None
+            },
+            "success": {
+                "title": "Success",
+                "header": "Success",
+                "message": "Operation completed successfully!",
+                "icon_content": "✓",
+                "icon_color": "linear-gradient(135deg, #10b981, #059669)",
+                "footer_text": None
+            },
+            "warning": {
+                "title": "Warning",
+                "header": "Warning",
+                "message": "Please review this information carefully.",
+                "icon_content": "⚠",
+                "icon_color": "linear-gradient(135deg, #f59e0b, #d97706)",
+                "footer_text": "Proceed with caution"
+            },
+            "error": {
+                "title": "Error",
+                "header": "Error",
+                "message": "Something went wrong. Please try again.",
+                "icon_content": "✕",
+                "icon_color": "linear-gradient(135deg, #dc2626, #991b1b)",
+                "footer_text": "Contact support if this problem persists"
+            },
+            "loading": {
+                "title": "Loading",
+                "header": "Loading",
+                "message": "Please wait while we process your request",
+                "icon_content": "⟳",
+                "icon_color": "linear-gradient(135deg, #6366f1, #4f46e5)",
+                "footer_text": None,
+                "show_loading_dots": True
+            }
+        }
+
+        # Get default config for popup type
+        config = popup_configs.get(popup_type, popup_configs["info"])
+
+        # Default buttons if none provided
+        if buttons is None:
+            buttons = [
+                {
+                    "text": "OK",
+                    "onclick": "window.close() || window.history.back()",
+                    "class": ""
+                }
+            ]
+
+        template = CWD_TEMPLATER.get_template('popup.html')
+
+        return template.render(
+            title=title or config["title"],
+            header=header or config["header"],
+            text=message or config["message"],
+            icon_content=icon_content or config["icon_content"],
+            icon_color=icon_color or config["icon_color"],
+            buttons=buttons,
+            footer_text=footer_text or config.get("footer_text"),
+            auto_close_ms=auto_close_ms,
+            redirect_url=redirect_url,
+            redirect_delay_ms=redirect_delay_ms,
+            show_loading_dots=show_loading_dots or config.get("show_loading_dots", False)
+        )

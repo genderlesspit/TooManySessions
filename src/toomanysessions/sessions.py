@@ -22,6 +22,8 @@ class Session:
     user: object = None
     code: str = None
     oauth_token_data: Any = None
+    whitelisted: bool = False
+    welcomed: bool = False
 
     @classmethod
     def create(cls, token: str, max_age: int = 3600 * 8) -> 'Session':

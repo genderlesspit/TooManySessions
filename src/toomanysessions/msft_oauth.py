@@ -22,12 +22,11 @@ from .sessions import Sessions, Session
 
 DEBUG = True
 
-
 # noinspection PyUnresolvedReferences
 class MSFTOAuthCFG(TOMLConfig):
     client_id: str = None
     tenant_id: str = "common"
-    scopes: str = "User.Read"
+    scopes: str = "User.Read Organization.Read.All"
 
 @dataclass
 class MSFTOAuthCallback:
@@ -212,6 +211,33 @@ class MicrosoftOAuth(APIRouter):
         }
         client = httpx.Client()
         return client.build_request("POST", url, data=data, headers=headers)
+
+    def build_logout_request(self, session: Session, redirect_uri: str):
+       """Build Microsoft OAuth logout URL"""
+
+       base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/logout"
+
+       params = {
+           "post_logout_redirect_uri": redirect_uri
+       }
+
+       # Add logout_hint if we have user info
+       if hasattr(session, 'user') and session.user:
+           if hasattr(session.user, 'userPrincipalName'):
+               params["logout_hint"] = session.user.userPrincipalName
+               log.debug(f"{self}: Added logout_hint: {session.user.userPrincipalName}")
+
+       log.debug(f"{self}: Building logout request with the following params:")
+       for param in params:
+           log.debug(f"  -{param}={params.get(param)}")
+
+       url = f"{base_url}?{urlencode(params)}"
+       log.debug(f"Built logout URL: {url}")
+
+       client = httpx.Client()
+       request = client.build_request("GET", url)
+
+       return request
 
     @cached_property
     def login_successful(self):
