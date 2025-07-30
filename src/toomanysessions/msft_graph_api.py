@@ -81,7 +81,9 @@ class GraphAPI:
             "organization"
         )
         info = info["value"][0]
-        return Organization(**info)
+        inst = Organization(**info)
+        log.debug(f"{self}: Got user's organizational info:\n  - org={inst}")
+        return inst
 
     async def request(self, method, resource, query_parameters=None, headers=None, json_body=None):
         url = f"{self.base_url}/{resource}"

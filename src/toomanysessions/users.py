@@ -13,6 +13,7 @@ from . import DEBUG, Session, CWD_TEMPLATER
 class User:
     session: Session
     me: Any = None
+    org: Any = None
 
     @classmethod
     def create(cls, session):

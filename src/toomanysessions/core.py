@@ -140,8 +140,9 @@ class SessionedServer(ThreadedServer):
                     elif isinstance(self.authentication_model, MicrosoftOAuth):
                         metadata: MSFTOAuthTokenResponse = session.oauth_token_data
                         session.graph = GraphAPI(metadata.access_token)
-                        user.me = await session.graph.me
-                        user.org = await session.graph.organization
+                        setattr(user, "me", await session.graph.me)
+                        setattr(user, "org", await session.graph.organization)
+                        if (user.me is None) or (user.org is None): raise RuntimeError("Error fetching user's information!")
 
                 if (getattr(self, 'tenant_whitelist', None) is not None) or (
                         getattr(self, 'user_whitelist', None) is not None):
