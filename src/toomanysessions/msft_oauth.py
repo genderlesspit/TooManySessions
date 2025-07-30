@@ -55,7 +55,8 @@ class MicrosoftOAuth(APIRouter):
         _ = self.cwd
         self.cfg_kwargs = cfg_kwargs
         _ = self.cfg
-        self.tenant_id = self.cfg.tenant_id
+        self.tenant_id = "common" #Now that we're doing auth by getting tenants from user's all urls should be common
+        # self.tenant_id = self.cfg.tenant_id
         self.scopes = self.cfg.scopes
         self.sessions = self.server.sessions
         self.url = self.server.url
