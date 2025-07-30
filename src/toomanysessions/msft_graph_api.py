@@ -65,8 +65,8 @@ class GraphAPI:
         return f"[GraphAPI.{self.token[:4]}"
 
     @property
-    async def me(self):
-        info: dict = await self.request(
+    def me(self):
+        info: dict = self.request(
             method="get",
             resource="me"
         )
@@ -74,9 +74,9 @@ class GraphAPI:
         return Me(**info)
 
     @property
-    async def organization(self):
+    def organization(self):
         """Get user's organization/tenant info from Graph API"""
-        info = await self.request(
+        info = self.request(
             "GET",
             "organization"
         )
@@ -85,7 +85,7 @@ class GraphAPI:
         log.debug(f"{self}: Got user's organizational info:\n  - org={inst}")
         return inst
 
-    async def request(self, method, resource, query_parameters=None, headers=None, json_body=None):
+    def request(self, method, resource, query_parameters=None, headers=None, json_body=None):
         url = f"{self.base_url}/{resource}"
 
         request_headers = self.headers.copy()
@@ -105,8 +105,8 @@ class GraphAPI:
         log.info(f"{self}: Sending {method.upper()} request to: {url}")
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.request(
+            with httpx.Client() as client:
+                response = client.request(
                     method=method.upper(),
                     url=url,
                     headers=request_headers,

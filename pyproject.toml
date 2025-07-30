@@ -1,6 +1,6 @@
 [project]
 name = "toomanysessions"
-version = "0.1.9932"
+version = "0.1.9933"
 description = ""
 authors = [
     {name = "Miles Copeland Luce"}

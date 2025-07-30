@@ -140,8 +140,8 @@ class SessionedServer(ThreadedServer):
                     elif isinstance(self.authentication_model, MicrosoftOAuth):
                         metadata: MSFTOAuthTokenResponse = session.oauth_token_data
                         session.graph = GraphAPI(metadata.access_token)
-                        setattr(user, "me", await session.graph.me)
-                        setattr(user, "org", await session.graph.organization)
+                        setattr(user, "me", session.graph.me)
+                        setattr(user, "org", session.graph.organization)
                         if (user.me is None) or (user.org is None): raise RuntimeError("Error fetching user's information!")
 
                 if (getattr(self, 'tenant_whitelist', None) is not None) or (
@@ -151,12 +151,12 @@ class SessionedServer(ThreadedServer):
                     log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
                     user: User = session.user
                     if not session.user: raise RuntimeError
-                    log.debug(f"{self}: Successfully found user after setup!\n  - user={user}")
+                    log.debug(f"{self}: Successfully found user setup!\n  - user={user}")
                     if isinstance(self.authentication_model, MicrosoftOAuth):
                         tenant = user.org.id
                         email = user.me.userPrincipalName
                         if not (tenant and email): raise RuntimeError
-                        log.debug(f"{self}: Successfully found whitelist details!\n  - tenant={tenant}\n  - email={email}")
+                        log.debug(f"{self}: Successfully found user's whitelist details!\n  - tenant={tenant}\n  - email={email}")
                         if not session.whitelisted:
                             try:
                                 if getattr(self, 'tenant_whitelist', None) is not None:
