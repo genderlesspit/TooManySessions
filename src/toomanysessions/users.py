@@ -7,13 +7,14 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from . import DEBUG, Session, CWD_TEMPLATER
+from .msft_graph_api import Organization, Me
 
 
 @dataclass
 class User:
     session: Session
-    me: Any = None
-    org: Any = None
+    me: Any | Me = None
+    org: Any | Organization = None
 
     @classmethod
     def create(cls, session):

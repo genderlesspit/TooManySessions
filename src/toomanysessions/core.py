@@ -132,8 +132,8 @@ class SessionedServer(ThreadedServer):
                         return HTMLResponse(self.redirect_html(oauth_request.url))
 
                 if not session.user:
-                    session.user = self.users.user_model.create(session)
-                    user = session.user
+                    setattr(session, "user", self.users.user_model.create(session))
+                    user: User = session.user
                     if not session.user: raise RuntimeError
                     if self.authentication_model == no_auth:
                         pass
@@ -149,12 +149,15 @@ class SessionedServer(ThreadedServer):
                     log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
                     log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
                     log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
+                    user: User = session.user
+                    if not session.user: raise RuntimeError
                     if isinstance(self.authentication_model, MicrosoftOAuth):
+                        tenant = user.org.id
+                        email = user.me.userPrincipalName
                         if not session.whitelisted:
                             try:
                                 if getattr(self, 'tenant_whitelist', None) is not None:
                                     log.debug(f"{self}: Checking tenant id...")
-                                    tenant = session.user.org.id
                                     log.debug(f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
                                     if tenant not in self.tenant_whitelist:
                                         log.warning(
@@ -166,10 +169,9 @@ class SessionedServer(ThreadedServer):
                                 # Then check user whitelist
                                 if getattr(self, 'user_whitelist', None) is not None:
                                     log.debug(f"{self}: Checking user's email...")
-                                    user = session.user.me.userPrincipalName
-                                    if user not in self.user_whitelist:
+                                    if email not in self.user_whitelist:
                                         log.warning(
-                                            f"{self}: Unauthorized user {session.user.me.userPrincipalName} attempted to access the website!")
+                                            f"{self}: Unauthorized user {email} attempted to access the website!")
                                         raise PermissionError
                                 else:
                                     log.debug(f"{self}: No user whitelist. Skipping...")

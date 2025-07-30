@@ -19,7 +19,7 @@ class Session:
     expires_at: float = None
     authenticated: bool = False
     throttle: int = 0
-    user: object = None
+    user: Any = None
     code: str = None
     oauth_token_data: Any = None
     whitelisted: bool = False
