@@ -215,6 +215,14 @@ class SessionedServer(ThreadedServer):
                     status_code=500
                 )
 
+        @self.get("/me")
+        def me(request: Request):
+            cookie = request.cookies.get(self.session_name)
+            session = self.sessions.cache.get(cookie)
+            if not session:
+                return HTMLResponse(self.popup_error(401, "No user found"))
+            return HTMLResponse(self.render_user_profile(session))
+
         @self.get("/logout")
         def logout(request: Request):
             cookie = request.cookies.get(self.session_name)
@@ -449,3 +457,24 @@ class SessionedServer(ThreadedServer):
             redirect_delay_ms=redirect_delay_ms,
             show_loading_dots=show_loading_dots or config.get("show_loading_dots", False)
         )
+
+    def render_user_profile(self, session: Session) -> str:
+        """
+        Render user profile HTML using the Me dataclass data.
+
+        Args:
+            user: Me dataclass instance with user data
+            env: Jinja2 Environment instance
+            template_name: Template filename (default: "user.html")
+            logout_uri: URI for logout link (default: "/logout")
+
+        Returns:
+            Rendered HTML string
+        """
+        # Convert dataclass to dict and add logout_uri
+        me = getattr(session.user, "me", None)
+        if me is None:
+            return self.popup_404("This user does not have a detail view!")
+        # Load and render template
+        template = CWD_TEMPLATER.get_template("user.html")
+        return template.render(logout_uri=self.logout_uri, **me.__dict__)

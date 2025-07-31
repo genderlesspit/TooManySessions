@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title | default('User Profile - Microsoft') }}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .floating-particles {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+            top: 0;
+            left: 0;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .particle:nth-child(1) { width: 4px; height: 4px; left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { width: 6px; height: 6px; left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { width: 3px; height: 3px; left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { width: 5px; height: 5px; left: 40%; animation-delay: 0.5s; }
+        .particle:nth-child(5) { width: 4px; height: 4px; left: 50%; animation-delay: 1.5s; }
+        .particle:nth-child(6) { width: 7px; height: 7px; left: 60%; animation-delay: 3s; }
+        .particle:nth-child(7) { width: 3px; height: 3px; left: 70%; animation-delay: 0.8s; }
+        .particle:nth-child(8) { width: 5px; height: 5px; left: 80%; animation-delay: 2.5s; }
+        .particle:nth-child(9) { width: 4px; height: 4px; left: 90%; animation-delay: 1.2s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 2;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            margin-bottom: 30px;
+            animation: cardSlideUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            position: relative;
+        }
+
+        .header-logout {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+        }
+
+        @keyframes cardSlideUp {
+            0% {
+                transform: translateY(100px) scale(0.8);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .profile-picture {
+            width: 120px;
+            height: 120px;
+            border-radius: 60px;
+            background: {{ profile_picture_color | default('linear-gradient(135deg, #0078d4 0%, #005a9e 100%)') }};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 36px;
+            font-weight: bold;
+            animation: iconFloat 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.2s both;
+            box-shadow: 0 10px 25px rgba(0, 120, 212, 0.3);
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .profile-picture::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            background: inherit;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes iconFloat {
+            0% {
+                transform: translateY(-50px) rotate(-10deg) scale(0);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0) rotate(0deg) scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .profile-initials {
+            position: relative;
+            z-index: 1;
+            animation: iconContentDraw 1s ease-in-out 0.6s both;
+        }
+
+        @keyframes iconContentDraw {
+            0% {
+                transform: scale(0) rotate(45deg);
+                opacity: 0;
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        .profile-info {
+            flex: 1;
+        }
+
+        .profile-name {
+            margin: 0 0 8px 0;
+            background: linear-gradient(135deg, #1f2937, #374151);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 32px;
+            font-weight: 700;
+            animation: titleSlide 0.8s ease-out 0.4s both;
+        }
+
+        .profile-title {
+            margin: 0 0 4px 0;
+            color: #0078d4;
+            font-size: 18px;
+            font-weight: 600;
+            animation: textFade 0.8s ease-out 0.6s both;
+        }
+
+        .profile-email {
+            margin: 0 0 12px 0;
+            color: #6b7280;
+            font-size: 16px;
+            animation: textFade 0.8s ease-out 0.7s both;
+        }
+
+        .profile-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            animation: textFade 0.8s ease-out 0.8s both;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes titleSlide {
+            0% {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes textFade {
+            0% {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+            animation: cardSlideUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .card:nth-child(2) { animation-delay: 0.1s; }
+        .card:nth-child(3) { animation-delay: 0.2s; }
+        .card:nth-child(4) { animation-delay: 0.3s; }
+
+        .card h3 {
+            margin: 0 0 20px 0;
+            background: linear-gradient(135deg, #1f2937, #374151);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(107, 114, 128, 0.1);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #6b7280;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #1f2937;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .logout-btn {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+            position: relative;
+            overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .logout-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .logout-btn:hover::before {
+            left: 100%;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
+        }
+
+        .logout-btn:active {
+            transform: translateY(0);
+        }
+
+        .logout-icon {
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                text-align: center;
+                padding-bottom: 60px;
+            }
+
+            .header-logout {
+                position: static;
+                margin-top: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="floating-particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="profile-picture">
+                <div class="profile-initials">
+                    {% if givenName and surname %}
+                        {{ givenName[0] }}{{ surname[0] }}
+                    {% elif displayName %}
+                        {% set name_parts = displayName.split() %}
+                        {% if name_parts|length >= 2 %}
+                            {{ name_parts[0][0] }}{{ name_parts[-1][0] }}
+                        {% else %}
+                            {{ displayName[0] }}{{ displayName[1] if displayName|length > 1 else '' }}
+                        {% endif %}
+                    {% else %}
+                        SA
+                    {% endif %}
+                </div>
+            </div>
+            <div class="profile-info">
+                <h1 class="profile-name">{{ displayName | default('Unknown User') }}</h1>
+                {% if jobTitle %}
+                <div class="profile-title">{{ jobTitle }}</div>
+                {% endif %}
+                {% if mail %}
+                <div class="profile-email">{{ mail }}</div>
+                {% elif userPrincipalName %}
+                <div class="profile-email">{{ userPrincipalName }}</div>
+                {% endif %}
+                <div class="profile-status">
+                    <div class="status-dot"></div>
+                    {{ status | default('Available') }}
+                </div>
+            </div>
+            <div class="header-logout">
+                <a href="{{ logout_uri | default('/logout') }}" class="logout-btn">
+                    <span class="logout-icon">🚪</span>
+                    Logout
+                </a>
+            </div>
+        </div>
+
+        <div class="content-grid">
+            <div class="card">
+                <h3>Account Information</h3>
+                <div class="info-row">
+                    <span class="info-label">User ID</span>
+                    <span class="info-value">{{ id | default('Not available') }}</span>
+                </div>
+                {% if givenName %}
+                <div class="info-row">
+                    <span class="info-label">First Name</span>
+                    <span class="info-value">{{ givenName }}</span>
+                </div>
+                {% endif %}
+                {% if surname %}
+                <div class="info-row">
+                    <span class="info-label">Last Name</span>
+                    <span class="info-value">{{ surname }}</span>
+                </div>
+                {% endif %}
+                {% if userPrincipalName %}
+                <div class="info-row">
+                    <span class="info-label">User Principal Name</span>
+                    <span class="info-value">{{ userPrincipalName }}</span>
+                </div>
+                {% endif %}
+                {% if preferredLanguage %}
+                <div class="info-row">
+                    <span class="info-label">Preferred Language</span>
+                    <span class="info-value">{{ preferredLanguage }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>Contact Details</h3>
+                {% if businessPhones and businessPhones|length > 0 %}
+                <div class="info-row">
+                    <span class="info-label">Business Phone</span>
+                    <span class="info-value">{{ businessPhones[0] }}</span>
+                </div>
+                {% endif %}
+                {% if mobilePhone %}
+                <div class="info-row">
+                    <span class="info-label">Mobile Phone</span>
+                    <span class="info-value">{{ mobilePhone }}</span>
+                </div>
+                {% endif %}
+                {% if officeLocation %}
+                <div class="info-row">
+                    <span class="info-label">Office Location</span>
+                    <span class="info-value">{{ officeLocation }}</span>
+                </div>
+                {% endif %}
+                {% if mail %}
+                <div class="info-row">
+                    <span class="info-label">Email Address</span>
+                    <span class="info-value">{{ mail }}</span>
+                </div>
+                {% endif %}
+                <div class="info-row">
+                    <span class="info-label">Working Hours</span>
+                    <span class="info-value">{{ working_hours | default('9:00 AM - 5:30 PM') }}</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Add interactive sparkle effects on mouse move
+        document.addEventListener('mousemove', (e) => {
+            if (Math.random() < 0.08) {
+                const sparkle = document.createElement('div');
+                sparkle.style.position = 'fixed';
+                sparkle.style.left = e.clientX + 'px';
+                sparkle.style.top = e.clientY + 'px';
+                sparkle.style.width = '3px';
+                sparkle.style.height = '3px';
+                sparkle.style.background = 'rgba(255, 255, 255, 0.8)';
+                sparkle.style.borderRadius = '50%';
+                sparkle.style.pointerEvents = 'none';
+                sparkle.style.zIndex = '1000';
+                sparkle.style.animation = 'sparkle 1s ease-out forwards';
+
+                document.body.appendChild(sparkle);
+
+                setTimeout(() => {
+                    if (sparkle.parentNode) {
+                        sparkle.parentNode.removeChild(sparkle);
+                    }
+                }, 1000);
+            }
+        });
+
+        // Add sparkle keyframe
+        const sparkleCSS = `
+            @keyframes sparkle {
+                0% {
+                    transform: scale(0) rotate(0deg);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1) rotate(180deg);
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(0) rotate(360deg);
+                    opacity: 0;
+                }
+            }
+        `;
+
+        const style = document.createElement('style');
+        style.textContent = sparkleCSS;
+        document.head.appendChild(style);
+
+        // Simulate real-time status updates
+        setInterval(() => {
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.profile-status');
+
+            // Occasionally change status
+            if (Math.random() < 0.1) {
+                const statuses = [
+                    { text: 'Available', color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
+                    { text: 'In a meeting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+                    { text: 'Do not disturb', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+                    { text: 'Away', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' }
+                ];
+
+                const newStatus = statuses[Math.floor(Math.random() * statuses.length)];
+                statusDot.style.background = newStatus.color;
+                statusText.style.background = newStatus.bg;
+                statusText.style.color = newStatus.color;
+                statusText.innerHTML = `<div class="status-dot" style="background: ${newStatus.color}"></div>${newStatus.text}`;
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
