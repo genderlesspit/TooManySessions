@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from loguru import logger as log
 from starlette.requests import Request
 from starlette.responses import Response, RedirectResponse, HTMLResponse
+from toomanyports import PortManager
 from toomanythreads import ThreadedServer
 
 from . import DEBUG, Session, Sessions, CWD_TEMPLATER
@@ -31,7 +32,7 @@ class SessionedServer(ThreadedServer):
     def __init__(
             self,
             host: str = "localhost",
-            port: int = None,
+            port: int = PortManager().random_port(),
             session_name: str = "session",
             session_age: int = (3600 * 8),
             session_model: Type[Session] = Session,

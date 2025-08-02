@@ -69,11 +69,15 @@ class Passkey(APIRouter):
             input_password = data["passkey"]
 
             # Pass it to your validate method
-            if self.validate(session, input_password):
-                setattr(session, "authenticated", True)
-                return JSONResponse({"success": True, "message": "Successfully authenticated!"})
-            else:
-                return JSONResponse({"success": False, "message": "Invalid passkey"})
+            try:
+                if await self.validate(session, input_password):
+                    setattr(session, "authenticated", True)
+                    return JSONResponse({"success": True, "message": "Successfully authenticated!"})
+                else:
+                    return JSONResponse({"success": False, "message": "Invalid passkey"})
+            except Exception as e:
+                return JSONResponse({"success": False, "message": f"There was an unexpected issue!: {e}. "
+                                                                  f"Please alert your system administrator."})
 
     def __repr__(self):
         return "[TooManySessions.Passkey]"
@@ -104,9 +108,9 @@ class Passkey(APIRouter):
         return self._validate(input_password)
 
     async def show_passkey_prompt(self, request: Request):
-        log.debug(f"{self}: Showing passkey prompt for request with cookies:\n  - cookies={request.cookies}")
         template = CWD_TEMPLATER.get_template('prompt_for_passkey.html')
         forward = self.server.url + request.url.path
+        log.debug(f"{self}: Showing passkey prompt for request:\n  - cookies={request.cookies}\n  - redirect_url={forward}\n  - callback_url={self.callback_url}")
         rendered = template.render(
             redirect_url=forward,
             callback_uri=self.callback_url,
