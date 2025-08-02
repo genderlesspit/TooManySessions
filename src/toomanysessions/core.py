@@ -12,6 +12,7 @@ from . import DEBUG, Session, Sessions, CWD_TEMPLATER
 from . import Users, User
 from .msft_graph_api import GraphAPI
 from .msft_oauth import MicrosoftOAuth, MSFTOAuthTokenResponse
+from .passkey import Passkey
 
 
 def no_auth(session: Session):
@@ -41,37 +42,41 @@ class SessionedServer(ThreadedServer):
             verbose: bool = DEBUG,
             **kwargs
     ) -> None:
+        #simple declarations
         self.verbose = verbose
         self.host = host
         self.port = port
         self.session_name = session_name
         self.session_age = session_age
 
+        #session model - must be of the Session class
         self.session_model = session_model
         if not self.session_model.create:
             raise ValueError(f"{self}: Session models require a create function!")
         for kwarg in kwargs:
             setattr(self, kwarg, kwargs.get(kwarg))
 
+        #setup sessions architecture
         if not getattr(self, "sessions", None):
             self.sessions = Sessions(
                 session_model=self.session_model,
                 session_name=self.session_name,
                 verbose=self.verbose
             )
-        self.include_router(self.sessions)
 
+        #initialize authentication model
         self.authentication_model = authentication_model
         if isinstance(authentication_model, str):
             if authentication_model == "pass":
-                self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
-        if isinstance(authentication_model, str):
+                self.authentication_model: Passkey = Passkey(self)
+                user_model = None
             if authentication_model == "msft":
                 self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
         if isinstance(authentication_model, APIRouter):
             self.authentication_model = authentication_model
         if authentication_model is None:
             self.authentication_model = no_auth
+
         log.debug(f"{self}: Initialized authentication model as {self.authentication_model}")
 
         self.user_model = user_model
@@ -83,30 +88,29 @@ class SessionedServer(ThreadedServer):
                 self.user_model,
                 self.user_model.create,
             )
+            if not self.user_model.create:
+                raise ValueError(f"{self}: User models require a create function!")
 
-        self.user_whitelist = user_whitelist
-        log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
-        self.tenant_whitelist = tenant_whitelist
-        log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
-
-        if not self.user_model.create:
-            raise ValueError(f"{self}: User models require a create function!")
+            self.user_whitelist = user_whitelist
+            log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
+            self.tenant_whitelist = tenant_whitelist
+            log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
 
         super().__init__(
             host=self.host,
             port=self.port,
             verbose=self.verbose
         )
+        #these must be after super().__init__
+        self.include_router(self.sessions)
+        if not self.authentication_model == no_auth: self.include_router(self.authentication_model)
+        if getattr(self, "user_model", None): self.include_router(self.users)
 
         if self.verbose:
             try:
                 log.success(f"{self}: Initialized successfully!\n  - host={self.host}\n  - port={self.port}")
             except Exception:
                 log.success(f"Initialized new ThreadedServer successfully!\n  - host={self.host}\n  - port={self.port}")
-
-        if self.users: self.include_router(self.users)
-        if isinstance(self.authentication_model, MicrosoftOAuth):
-            self.include_router(self.authentication_model)
 
         for route in self.routes:
             log.debug(f"{self}: Initialized route {route.path}")
@@ -126,6 +130,8 @@ class SessionedServer(ThreadedServer):
                 return await call_next(request)
             if "/logout" in request.url.path:
                 return await call_next(request)
+            if "/passkey" in request.url.path:
+                return await call_next(request)
 
             try:
                 session = self.session_manager(request)
@@ -138,67 +144,69 @@ class SessionedServer(ThreadedServer):
                         auth: MicrosoftOAuth = self.authentication_model
                         oauth_request = auth.build_auth_code_request(session)
                         return HTMLResponse(self.redirect_html(oauth_request.url))
+                    elif isinstance(self.authentication_model, Passkey):
+                        auth: Passkey = self.authentication_model
+                        return await auth.show_passkey_prompt(request)
 
-                if not session.user:
-                    setattr(session, "user", self.users.user_model.create(session))
-                    user: User = session.user
-                    if not session.user: raise RuntimeError
-                    if self.authentication_model == no_auth:
-                        pass
-                    elif isinstance(self.authentication_model, MicrosoftOAuth):
-                        metadata: MSFTOAuthTokenResponse = session.oauth_token_data
-                        session.graph = GraphAPI(metadata.access_token)
-                        setattr(user, "me", session.graph.me)
-                        setattr(user, "org", session.graph.organization)
-                        if (user.me is None) or (user.org is None): raise RuntimeError("Error fetching user's information!")
+                if getattr(self, "user_model", None):
+                    if not session.user:
+                        setattr(session, "user", self.users.user_model.create(session))
+                        user: User = session.user
+                        if not session.user: raise RuntimeError
+                        if self.authentication_model == no_auth:
+                            pass
+                        elif isinstance(self.authentication_model, MicrosoftOAuth):
+                            metadata: MSFTOAuthTokenResponse = session.oauth_token_data
+                            session.graph = GraphAPI(metadata.access_token)
+                            setattr(user, "me", session.graph.me)
+                            setattr(user, "org", session.graph.organization)
+                            if (user.me is None) or (user.org is None): raise RuntimeError("Error fetching user's information!")
 
-                if (getattr(self, 'tenant_whitelist', None) is not None) or (
-                        getattr(self, 'user_whitelist', None) is not None):
-                    log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
-                    log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
-                    log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
-                    user: User = session.user
-                    if not session.user: raise RuntimeError
-                    log.debug(f"{self}: Successfully found user setup!\n  - user={user}")
-                    if isinstance(self.authentication_model, MicrosoftOAuth):
-                        tenant = user.org.id
-                        email = user.me.userPrincipalName
-                        if not (tenant and email): raise RuntimeError
-                        log.debug(f"{self}: Successfully found user's whitelist details!\n  - tenant={tenant}\n  - email={email}")
-                        if not session.whitelisted:
-                            try:
-                                if getattr(self, 'tenant_whitelist', None) is not None:
-                                    log.debug(f"{self}: Checking tenant id...")
-                                    log.debug(f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
-                                    if tenant not in self.tenant_whitelist:
-                                        log.warning(
-                                            f"{self}: Unauthorized tenant {tenant} attempted to access the website!")
-                                        raise PermissionError
-                                else:
-                                    log.debug(f"{self}: No tenant whitelist. Skipping...")
+                    if (getattr(self, 'tenant_whitelist', None) is not None) or (getattr(self, 'user_whitelist', None) is not None):
+                        log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
+                        log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
+                        log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
+                        user: User = session.user
+                        if not session.user: raise RuntimeError
+                        log.debug(f"{self}: Successfully found user setup!\n  - user={user}")
+                        if isinstance(self.authentication_model, MicrosoftOAuth):
+                            tenant = user.org.id
+                            email = user.me.userPrincipalName
+                            if not (tenant and email): raise RuntimeError
+                            log.debug(f"{self}: Successfully found user's whitelist details!\n  - tenant={tenant}\n  - email={email}")
+                            if not session.whitelisted:
+                                try:
+                                    if getattr(self, 'tenant_whitelist', None) is not None:
+                                        log.debug(f"{self}: Checking tenant id...")
+                                        log.debug(f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
+                                        if tenant not in self.tenant_whitelist:
+                                            log.warning(
+                                                f"{self}: Unauthorized tenant {tenant} attempted to access the website!")
+                                            raise PermissionError
+                                    else:
+                                        log.debug(f"{self}: No tenant whitelist. Skipping...")
 
-                                # Then check user whitelist
-                                if getattr(self, 'user_whitelist', None) is not None:
-                                    log.debug(f"{self}: Checking user's email...")
-                                    if email not in self.user_whitelist:
-                                        log.warning(
-                                            f"{self}: Unauthorized user {email} attempted to access the website!")
-                                        raise PermissionError
-                                else:
-                                    log.debug(f"{self}: No user whitelist. Skipping...")
+                                    # Then check user whitelist
+                                    if getattr(self, 'user_whitelist', None) is not None:
+                                        log.debug(f"{self}: Checking user's email...")
+                                        if email not in self.user_whitelist:
+                                            log.warning(
+                                                f"{self}: Unauthorized user {email} attempted to access the website!")
+                                            raise PermissionError
+                                    else:
+                                        log.debug(f"{self}: No user whitelist. Skipping...")
 
-                            except PermissionError:
-                                return HTMLResponse(
-                                    self.popup_unauthorized("You're not authorized to access this website.\n"
-                                                            "Either log into a different account or contact a system administrator."))
+                                except PermissionError:
+                                    return HTMLResponse(
+                                        self.popup_unauthorized("You're not authorized to access this website.\n"
+                                                                "Either log into a different account or contact a system administrator."))
+                                setattr(session, "whitelisted", True)
 
-                            setattr(session, "whitelisted", True)
-
-                if not session.welcomed:
-                    log.warning(f"{self}: User has yet to be welcomed!")
-                    if isinstance(self.authentication_model, MicrosoftOAuth):
-                        setattr(session, "welcomed", True)
-                        return HTMLResponse(self.authentication_model.welcome(session.user.me.displayName))
+                    if not session.welcomed:
+                        log.warning(f"{self}: User has yet to be welcomed!")
+                        if isinstance(self.authentication_model, MicrosoftOAuth):
+                            setattr(session, "welcomed", True)
+                            return HTMLResponse(self.authentication_model.welcome(session.user.me.displayName))
 
                 response = await call_next(request)
 

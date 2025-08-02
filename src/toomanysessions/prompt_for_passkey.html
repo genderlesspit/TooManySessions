@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Authentication Required</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite;
+            overflow: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .floating-particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .particle:nth-child(1) { width: 4px; height: 4px; left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { width: 6px; height: 6px; left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { width: 3px; height: 3px; left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { width: 5px; height: 5px; left: 40%; animation-delay: 0.5s; }
+        .particle:nth-child(5) { width: 4px; height: 4px; left: 50%; animation-delay: 1.5s; }
+        .particle:nth-child(6) { width: 7px; height: 7px; left: 60%; animation-delay: 3s; }
+        .particle:nth-child(7) { width: 3px; height: 3px; left: 70%; animation-delay: 0.8s; }
+        .particle:nth-child(8) { width: 5px; height: 5px; left: 80%; animation-delay: 2.5s; }
+        .particle:nth-child(9) { width: 4px; height: 4px; left: 90%; animation-delay: 1.2s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 50px 40px;
+            text-align: center;
+            max-width: 450px;
+            position: relative;
+            z-index: 2;
+            animation: cardSlideUp 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        @keyframes cardSlideUp {
+            0% {
+                transform: translateY(100px) scale(0.8);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            border-radius: 16px;
+            margin: 0 auto 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: iconFloat 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.2s both;
+            box-shadow: 0 10px 25px rgba(220, 38, 38, 0.3);
+            position: relative;
+        }
+
+        .icon::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            background: inherit;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes iconFloat {
+            0% {
+                transform: translateY(-50px) rotate(-10deg) scale(0);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0) rotate(0deg) scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .icon-content {
+            position: relative;
+            z-index: 1;
+            animation: iconContentDraw 1s ease-in-out 0.6s both;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        @keyframes iconContentDraw {
+            0% {
+                transform: scale(0) rotate(45deg);
+                opacity: 0;
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        h2 {
+            margin: 0 0 12px 0;
+            background: linear-gradient(135deg, #1f2937, #374151);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 28px;
+            font-weight: 700;
+            animation: titleSlide 0.8s ease-out 0.4s both;
+        }
+
+        @keyframes titleSlide {
+            0% {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        p {
+            margin: 0 0 24px 0;
+            color: #6b7280;
+            font-size: 16px;
+            line-height: 1.5;
+            animation: textFade 0.8s ease-out 0.6s both;
+        }
+
+        @keyframes textFade {
+            0% {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .password-input {
+            width: 100%;
+            padding: 16px 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            animation: inputSlide 0.8s ease-out 0.8s both;
+            box-sizing: border-box;
+        }
+
+        .password-input:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+            background: rgba(255, 255, 255, 1);
+        }
+
+        @keyframes inputSlide {
+            0% {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .buttons {
+            margin-top: 30px;
+            animation: buttonsFade 0.8s ease-out 1s both;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        @keyframes buttonsFade {
+            0% {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        button {
+            background: linear-gradient(135deg, #0078d4, #106ebe);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            box-shadow: 0 8px 20px rgba(0, 120, 212, 0.3);
+            position: relative;
+            overflow: hidden;
+            min-width: 120px;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0, 120, 212, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button:disabled:hover {
+            transform: none;
+            box-shadow: 0 8px 20px rgba(0, 120, 212, 0.3);
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #6b7280, #4b5563);
+            box-shadow: 0 8px 20px rgba(107, 114, 128, 0.3);
+        }
+
+        button.secondary:hover {
+            box-shadow: 0 12px 30px rgba(107, 114, 128, 0.4);
+        }
+
+        .error-message {
+            color: #dc2626;
+            font-size: 14px;
+            margin-top: 10px;
+            animation: shake 0.5s ease-in-out;
+            display: none;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .footer-text {
+            animation: textFade 0.8s ease-out 1.2s both;
+            font-size: 14px;
+            color: #9ca3af;
+            margin-top: 20px;
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="floating-particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <div class="card">
+        <div class="icon">
+            <div class="icon-content">🔐</div>
+        </div>
+
+        <h2>Authentication Required</h2>
+        <p>Please enter your passkey to continue accessing the secure area.</p>
+
+        <input type="password" class="password-input" placeholder="Enter your passkey" id="passkeyInput" autocomplete="current-password">
+
+        <div class="error-message" id="errorMessage">
+            Invalid passkey. Please try again.
+        </div>
+
+        <div class="buttons">
+            <button onclick="submitPasskey()" id="submitBtn">
+                <span id="submitText">Authenticate</span>
+            </button>
+            <button class="secondary" onclick="cancelAuth()">Cancel</button>
+        </div>
+
+        <p class="footer-text">Secure authentication powered by TooManySessions</p>
+    </div>
+
+    <script>
+        let isSubmitting = false;
+        let attemptCount = 0;
+        const maxAttempts = 3;
+
+        // Add sparkle effects on mouse move
+        document.addEventListener('mousemove', (e) => {
+            if (Math.random() < 0.08) {
+                const sparkle = document.createElement('div');
+                sparkle.style.position = 'fixed';
+                sparkle.style.left = e.clientX + 'px';
+                sparkle.style.top = e.clientY + 'px';
+                sparkle.style.width = '3px';
+                sparkle.style.height = '3px';
+                sparkle.style.background = 'rgba(255, 255, 255, 0.8)';
+                sparkle.style.borderRadius = '50%';
+                sparkle.style.pointerEvents = 'none';
+                sparkle.style.zIndex = '1000';
+                sparkle.style.animation = 'sparkle 1s ease-out forwards';
+
+                document.body.appendChild(sparkle);
+
+                setTimeout(() => {
+                    if (sparkle.parentNode) {
+                        sparkle.parentNode.removeChild(sparkle);
+                    }
+                }, 1000);
+            }
+        });
+
+        // Add sparkle keyframe
+        const sparkleCSS = `
+            @keyframes sparkle {
+                0% {
+                    transform: scale(0) rotate(0deg);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1) rotate(180deg);
+                    opacity: 1;
+                }
+                100% {
+                    transform: scale(0) rotate(360deg);
+                    opacity: 0;
+                }
+            }
+        `;
+
+        const style = document.createElement('style');
+        style.textContent = sparkleCSS;
+        document.head.appendChild(style);
+
+        // Handle Enter key press
+        document.getElementById('passkeyInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !isSubmitting) {
+                submitPasskey();
+            }
+        });
+
+        // Focus input on load
+        window.addEventListener('load', function() {
+            document.getElementById('passkeyInput').focus();
+        });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            errorDiv.style.animation = 'shake 0.5s ease-in-out';
+
+            // Clear animation after it completes
+            setTimeout(() => {
+                errorDiv.style.animation = '';
+            }, 500);
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        function setLoading(loading) {
+            const submitBtn = document.getElementById('submitBtn');
+            const submitText = document.getElementById('submitText');
+
+            if (loading) {
+                submitText.innerHTML = '<span class="loading-spinner"></span>Authenticating...';
+                submitBtn.disabled = true;
+                isSubmitting = true;
+            } else {
+                submitText.textContent = 'Authenticate';
+                submitBtn.disabled = false;
+                isSubmitting = false;
+            }
+        }
+
+        async function submitPasskey() {
+            if (isSubmitting) return;
+
+            const passkeyInput = document.getElementById('passkeyInput');
+            const passkey = passkeyInput.value.trim();
+
+            if (!passkey) {
+                showError('Please enter a passkey');
+                passkeyInput.focus();
+                return;
+            }
+
+            hideError();
+            setLoading(true);
+
+            try {
+                const response = await fetch('{{ callback_uri | default("/api/authenticate") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ passkey: passkey })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Success - redirect or close
+                    submitText.textContent = 'Success!';
+                    setTimeout(() => {
+                        window.location.href = result.redirect_url || '{{ redirect_url | default("/dashboard") }}';
+                    }, 1000);
+                } else {
+                    // Authentication failed
+                    attemptCount++;
+                    passkeyInput.value = '';
+
+                    if (attemptCount >= maxAttempts) {
+                        showError('Too many failed attempts. Access denied.');
+                        document.getElementById('submitBtn').disabled = true;
+                        setTimeout(() => {
+                            window.location.href = '{{ redirect_url | default("/") }}';
+                        }, 3000);
+                    } else {
+                        const remaining = maxAttempts - attemptCount;
+                        showError(`Invalid passkey. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`);
+                        passkeyInput.focus();
+                    }
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                showError('Connection error. Please try again.');
+                passkeyInput.focus();
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function cancelAuth() {
+            window.location.href = '{{ redirect_url | default("/") }}';
+        }
+    </script>
+</body>
+</html>
