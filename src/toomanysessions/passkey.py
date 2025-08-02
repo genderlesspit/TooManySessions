@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 from toomanyconfigs import CWD, TOMLConfig, REPR
 
-from toomanysessions.src.toomanysessions import Session, CWD_TEMPLATER
+from . import Session, CWD_TEMPLATER
 
 
 def prompt_and_hash_password():
