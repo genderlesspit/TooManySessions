@@ -34,20 +34,22 @@ class SessionedServer(ThreadedServer):
             session_name: str = "session",
             session_age: int = (3600 * 8),
             session_model: Type[Session] = Session,
-            authentication_model: str | Type[APIRouter] | None = "msft",
-            user_model: Type[User] = User,
+            authentication_model: str | Type[APIRouter] | None = "msft", #available auth models are 'msft', 'pass', and None
+            user_model: Type[User] | None = User,
             user_whitelist: list = None,
             tenant_whitelist: list = None,
             verbose: bool = DEBUG,
             **kwargs
     ) -> None:
+        self.verbose = verbose
         self.host = host
         self.port = port
         self.session_name = session_name
         self.session_age = session_age
-        self.session_model = session_model
-        self.verbose = verbose
 
+        self.session_model = session_model
+        if not self.session_model.create:
+            raise ValueError(f"{self}: Session models require a create function!")
         for kwarg in kwargs:
             setattr(self, kwarg, kwargs.get(kwarg))
 
@@ -57,8 +59,12 @@ class SessionedServer(ThreadedServer):
                 session_name=self.session_name,
                 verbose=self.verbose
             )
+        self.include_router(self.sessions)
 
         self.authentication_model = authentication_model
+        if isinstance(authentication_model, str):
+            if authentication_model == "pass":
+                self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
         if isinstance(authentication_model, str):
             if authentication_model == "msft":
                 self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
@@ -69,17 +75,20 @@ class SessionedServer(ThreadedServer):
         log.debug(f"{self}: Initialized authentication model as {self.authentication_model}")
 
         self.user_model = user_model
-        self.users = Users(
-            self.user_model,
-            self.user_model.create,
-        )
+        if self.user_model is None:
+            if (isinstance(self.authentication_model, MicrosoftOAuth)): raise RuntimeError("You can't have OAuth without a User Model!")
+            log.warning(f"{self}: Launching without users! Ignore if this is intentional.")
+        else:
+            self.users = Users(
+                self.user_model,
+                self.user_model.create,
+            )
+
         self.user_whitelist = user_whitelist
         log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
         self.tenant_whitelist = tenant_whitelist
         log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
 
-        if not self.session_model.create:
-            raise ValueError(f"{self}: Session models require a create function!")
         if not self.user_model.create:
             raise ValueError(f"{self}: User models require a create function!")
 
@@ -95,8 +104,7 @@ class SessionedServer(ThreadedServer):
             except Exception:
                 log.success(f"Initialized new ThreadedServer successfully!\n  - host={self.host}\n  - port={self.port}")
 
-        self.include_router(self.sessions)
-        self.include_router(self.users)
+        if self.users: self.include_router(self.users)
         if isinstance(self.authentication_model, MicrosoftOAuth):
             self.include_router(self.authentication_model)
 

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .signature { max-width: 600px; }
+        .logo { margin-bottom: 20px; }
+        .contact-info { color: #2c5f5f; font-size: 14px; line-height: 1.6; }
+        .name { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
+        .title { margin-bottom: 15px; }
+        .contact-line { margin-bottom: 3px; }
+        .website { color: #2c5f5f; text-decoration: none; }
+        .social { margin-top: 10px; }
+        .social a { color: #2c5f5f; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="signature">
+        <div class="logo">
+            <img src="{{ logo_url | default('https://your-domain.com/phazebreak-logo.png') }}"
+                 alt="Phazebreak Logo"
+                 style="max-width: 300px; height: auto;">
+        </div>
+
+        <div class="contact-info">
+            <div class="name">{{ name | default('Miles Luce') }}</div>
+            <div class="title">{{ title | default('Sales & Research Associate') }}</div>
+
+            <div class="contact-line">
+                <strong>E:</strong> <a href="mailto:{{ email | default('miles.c.luce@phazebreak.com') }}"
+                                      style="color: #2c5f5f; text-decoration: none;">{{ email | default('miles.c.luce@phazebreak.com') }}</a>
+            </div>
+
+            <div class="contact-line">
+                <strong>M:</strong> <a href="tel:{{ phone | default('+1 816-588-7076') }}"
+                                      style="color: #2c5f5f; text-decoration: none;">{{ phone | default('+1 816-588-7076') }}</a>
+            </div>
+
+            <div class="contact-line">
+                <strong>W:</strong> <a href="{{ website | default('https://www.phazebreak.com') }}"
+                                      class="website">{{ website_display | default('www.phazebreak.com') }}</a>
+            </div>
+
+            <div class="social">
+                <strong>Follow us on:</strong>
+                <a href="{{ linkedin_url | default('https://www.linkedin.com/company/phazebreak') }}">LinkedIn - Phazebreak</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
