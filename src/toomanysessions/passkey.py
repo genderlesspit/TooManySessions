@@ -112,7 +112,7 @@ class Passkey(APIRouter):
         forward = self.server.url + request.url.path
         log.debug(
             f"{self}: Showing passkey prompt for request:\n  - cookies={request.cookies}\n  - redirect_url={forward}\n  - callback_url={self.callback_url}")
-        response = self.server.templater.safe_render(
+        response = self.server.default_templater.safe_render(
             'prompt_for_passkey.html',
             redirect_url=forward,
             callback_uri=self.callback_url,

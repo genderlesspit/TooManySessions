@@ -120,7 +120,7 @@ class SessionedServer(ThreadedServer):
         for route in self.routes:
             log.debug(f"{self}: Initialized route {route.path}")
 
-        self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
+        self.default_templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
 
         @self.middleware("http")
         async def middleware(request: Request, call_next):
@@ -298,7 +298,7 @@ class SessionedServer(ThreadedServer):
 
     def redirect_html(self, target_url):
         """Generate HTML that redirects to OAuth URL"""
-        return self.templater.safe_render('redirect.html', redirect_url=target_url)
+        return self.default_templater.safe_render('redirect.html', redirect_url=target_url)
 
     @cached_property
     def logout_uri(self):
@@ -306,7 +306,7 @@ class SessionedServer(ThreadedServer):
 
     def popup_404(self, message=None, redirect_delay=5000):
         """Generate 404 popup HTML"""
-        return self.templater.safe_render(
+        return self.default_templater.safe_render(
             'popup.html',
             title="Page Not Found - 404",
             header="404 - Page Not Found",
@@ -341,7 +341,7 @@ class SessionedServer(ThreadedServer):
             503: "Service unavailable - we're temporarily down for maintenance."
         }
 
-        return self.templater.safe_render(
+        return self.default_templater.safe_render(
             'popup.html',
             title=f"Error {error_code}",
             header=f"Error {error_code}",
@@ -365,7 +365,7 @@ class SessionedServer(ThreadedServer):
 
     def popup_unauthorized(self, message=None):
         """Generate unauthorized popup HTML"""
-        return self.templater.safe_render(
+        return self.default_templater.safe_render(
             'popup.html',
             title="Unauthorized Access",
             header="Unauthorized Access",
@@ -454,7 +454,7 @@ class SessionedServer(ThreadedServer):
                 }
             ]
 
-        return self.templater.safe_render(
+        return self.default_templater.safe_render(
             'popup.html',
             title=title or config["title"],
             header=header or config["header"],
@@ -495,4 +495,4 @@ class SessionedServer(ThreadedServer):
     def render_user_profile(self, session: Session):
         me = getattr(session.user, "me", None)
         if me is None: return self.popup_404("This user does not have a detail view!")
-        return self.templater.safe_render('user.html', logout_uri=self.logout_uri, **me.__dict__)
+        return self.default_templater.safe_render('user.html', logout_uri=self.logout_uri, **me.__dict__)

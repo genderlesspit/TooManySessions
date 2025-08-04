@@ -241,13 +241,13 @@ class MicrosoftOAuth(APIRouter):
 
     @cached_property
     def login_successful(self):
-        return self.server.templater.safe_render(
+        return self.server.default_templater.safe_render(
             "login_success.html",
             redirect_url=self.url
         )
 
     def welcome(self, name):
-        return self.server.templater.safe_render(
+        return self.server.default_templater.safe_render(
             "welcome.html",
             user=name,
             redirect_url=self.url
