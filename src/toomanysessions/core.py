@@ -1,11 +1,15 @@
+import asyncio
 import secrets
 from functools import cached_property
+from pathlib import Path
 from typing import Type
 
 from fastapi import APIRouter
+from fastj2 import FastJ2
+from jinja2 import Environment
 from loguru import logger as log
 from starlette.requests import Request
-from starlette.responses import Response, RedirectResponse, HTMLResponse
+from starlette.responses import Response, RedirectResponse
 from toomanyports import PortManager
 from toomanythreads import ThreadedServer
 
@@ -116,6 +120,8 @@ class SessionedServer(ThreadedServer):
         for route in self.routes:
             log.debug(f"{self}: Initialized route {route.path}")
 
+        self.templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
+
         @self.middleware("http")
         async def middleware(request: Request, call_next):
             log.info(f"{self}: Got request with following cookies:\n  - cookies={request.cookies.items()}")
@@ -136,6 +142,9 @@ class SessionedServer(ThreadedServer):
 
             try:
                 session = self.session_manager(request)
+                if session.throttle != 0:
+                    log.debug(f"{self}: Session '{session.token}' has been throttled for {session.throttle} seconds!")
+                    asyncio.wait(session.throttle)
 
                 if not session.authenticated:
                     log.warning(f"{self}: Session is not authenticated!")
@@ -144,7 +153,7 @@ class SessionedServer(ThreadedServer):
                     elif isinstance(self.authentication_model, MicrosoftOAuth):
                         auth: MicrosoftOAuth = self.authentication_model
                         oauth_request = auth.build_auth_code_request(session)
-                        return HTMLResponse(self.redirect_html(oauth_request.url))
+                        return self.redirect_html(oauth_request.url)
                     elif isinstance(self.authentication_model, Passkey):
                         auth: Passkey = self.authentication_model
                         return await auth.show_passkey_prompt(request)
@@ -198,38 +207,29 @@ class SessionedServer(ThreadedServer):
                                         log.debug(f"{self}: No user whitelist. Skipping...")
 
                                 except PermissionError:
-                                    return HTMLResponse(
-                                        self.popup_unauthorized("You're not authorized to access this website.\n"
-                                                                "Either log into a different account or contact a system administrator."))
+                                    return self.popup_unauthorized("You're not authorized to access this website.\n"
+                                                                "Either log into a different account or contact a system administrator.")
                                 setattr(session, "whitelisted", True)
 
                     if not session.welcomed:
                         log.warning(f"{self}: User has yet to be welcomed!")
                         if isinstance(self.authentication_model, MicrosoftOAuth):
                             setattr(session, "welcomed", True)
-                            return HTMLResponse(self.authentication_model.welcome(session.user.me.displayName))
+                            return self.authentication_model.welcome(session.user.me.displayName)
 
                 response = await call_next(request)
 
                 # Handle 404s with animated popup
                 if response.status_code == 404:
-                    return HTMLResponse(
-                        self.popup_404(
-                            message=f"The page '{request.url.path}' could not be found."
-                        ),
-                        status_code=404
+                    return self.popup_404(
+                        message=f"The page '{request.url.path}' could not be found."
                     )
-
-                return response
 
             except Exception as e:
                 log.error(f"{self}: Error processing request: {e}")
-                return HTMLResponse(
-                    self.popup_error(
-                        error_code=500,
-                        message="An unexpected error occurred while processing your request."
-                    ),
-                    status_code=500
+                return self.popup_error(
+                    error_code=500,
+                    message="An unexpected error occurred while processing your request."
                 )
 
         @self.get("/me")
@@ -237,15 +237,15 @@ class SessionedServer(ThreadedServer):
             cookie = request.cookies.get(self.session_name)
             session = self.sessions.cache.get(cookie)
             if not session:
-                return HTMLResponse(self.popup_error(401, "No user found"))
-            return HTMLResponse(self.render_user_profile(session))
+                return self.popup_error(401, "No user found")
+            return self.render_user_profile(session)
 
         @self.get("/logout")
         def logout(request: Request):
             cookie = request.cookies.get(self.session_name)
             session = self.sessions.cache.get(cookie)
             if not session:
-                return HTMLResponse(self.popup_error(401, "You are already logged out!"))
+                return self.popup_error(401, "You are already logged out!")
             if session:
                 log.debug(f"Logging out session: {cookie}")
 
@@ -276,7 +276,7 @@ class SessionedServer(ThreadedServer):
                     }
                 ]
             )
-            return HTMLResponse(popup_html)
+            return popup_html
 
     def session_manager(self, request: Request) -> Session | Response:
         if "/microsoft_oauth/callback" in request.url.path:
@@ -296,11 +296,9 @@ class SessionedServer(ThreadedServer):
             log.debug(f"{self}: This session was marked as authenticated!")
         return session
 
-    @staticmethod
-    def redirect_html(target_url):
+    def redirect_html(self, target_url):
         """Generate HTML that redirects to OAuth URL"""
-        template = CWD_TEMPLATER.get_template('redirect.html')
-        return template.render(redirect_url=target_url)
+        return self.templater.safe_render('redirect.html', redirect_url=target_url)
 
     @cached_property
     def logout_uri(self):
@@ -308,9 +306,8 @@ class SessionedServer(ThreadedServer):
 
     def popup_404(self, message=None, redirect_delay=5000):
         """Generate 404 popup HTML"""
-        template = CWD_TEMPLATER.get_template('popup.html')  # or whatever you name it
-
-        return template.render(
+        return self.templater.safe_render(
+            'popup.html',
             title="Page Not Found - 404",
             header="404 - Page Not Found",
             text=message or "The page you're looking for doesn't exist or has been moved.",
@@ -344,9 +341,8 @@ class SessionedServer(ThreadedServer):
             503: "Service unavailable - we're temporarily down for maintenance."
         }
 
-        template = CWD_TEMPLATER.get_template('popup.html')
-
-        return template.render(
+        return self.templater.safe_render(
+            'popup.html',
             title=f"Error {error_code}",
             header=f"Error {error_code}",
             text=message or error_messages.get(error_code, "An unexpected error occurred."),
@@ -369,9 +365,8 @@ class SessionedServer(ThreadedServer):
 
     def popup_unauthorized(self, message=None):
         """Generate unauthorized popup HTML"""
-        template = CWD_TEMPLATER.get_template('popup.html')
-
-        return template.render(
+        return self.templater.safe_render(
+            'popup.html',
             title="Unauthorized Access",
             header="Unauthorized Access",
             text=message or "You do not have permission to access this resource. Please check your credentials and try again.",
@@ -459,9 +454,8 @@ class SessionedServer(ThreadedServer):
                 }
             ]
 
-        template = CWD_TEMPLATER.get_template('popup.html')
-
-        return template.render(
+        return self.templater.safe_render(
+            'popup.html',
             title=title or config["title"],
             header=header or config["header"],
             text=message or config["message"],
@@ -475,23 +469,30 @@ class SessionedServer(ThreadedServer):
             show_loading_dots=show_loading_dots or config.get("show_loading_dots", False)
         )
 
-    def render_user_profile(self, session: Session) -> str:
-        """
-        Render user profile HTML using the Me dataclass data.
+    def renderer_error(self, e, template_name, context):
+        template = CWD_TEMPLATER.get_template('popup.html')
+        return template.render(
+            title=f"Error 500",
+            header=f"Error 500",
+            text=e,
+            icon_content="⚠",
+            icon_color="linear-gradient(135deg, #f59e0b, #d97706)",
+            buttons=[
+                {
+                    "text": "Go Home",
+                    "onclick": f"window.location.href='{self.url or '/'}'",
+                    "class": ""
+                },
+                {
+                    "text": "Try Again",
+                    "onclick": "window.location.reload()",
+                    "class": "secondary"
+                }
+            ],
+            footer_text="Contact support if this problem persists"
+        )
 
-        Args:
-            user: Me dataclass instance with user data
-            env: Jinja2 Environment instance
-            template_name: Template filename (default: "user.html")
-            logout_uri: URI for logout link (default: "/logout")
-
-        Returns:
-            Rendered HTML string
-        """
-        # Convert dataclass to dict and add logout_uri
+    def render_user_profile(self, session: Session):
         me = getattr(session.user, "me", None)
-        if me is None:
-            return self.popup_404("This user does not have a detail view!")
-        # Load and render template
-        template = CWD_TEMPLATER.get_template("user.html")
-        return template.render(logout_uri=self.logout_uri, **me.__dict__)
+        if me is None: return self.popup_404("This user does not have a detail view!")
+        return self.templater.safe_render('user.html', logout_uri=self.logout_uri, **me.__dict__)

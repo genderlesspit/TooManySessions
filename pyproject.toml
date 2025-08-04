@@ -1,6 +1,6 @@
 [project]
 name = "toomanysessions"
-version = "0.1.9953"
+version = "0.1.9954"
 description = ""
 authors = [
     {name = "Miles Copeland Luce"}
@@ -16,13 +16,14 @@ dependencies = [
     "httpx (>=0.28.1,<0.29.0)",
     "jinja2 (>=3.1.6,<4.0.0)",
     "pkce (>=1.0.3,<2.0.0)",
-    "toomanyconfigs (>=0.2.7,<0.3.0)",
-    "bcrypt (>=4.3.0,<5.0.0)"
+    "toomanyconfigs (>=0.2.82,<0.3.0)",
+    "bcrypt (>=4.3.0,<5.0.0)",
+    "fastj2 (>=0.1.11,<0.2.0)"
 ]
 
 [tool.poetry]
 packages = [{include = "toomanysessions", from = "src"}]
-include = ["toomanysessions/*.html"]
+include = ["toomanysessions/templates/*.html"]
 
 
 [build-system]

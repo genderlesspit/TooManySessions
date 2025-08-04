@@ -3,13 +3,13 @@ import time
 from functools import cached_property
 
 import bcrypt
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter
 from loguru import logger as log
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse
 from toomanyconfigs import CWD, TOMLConfig, REPR
 
-from . import Session, CWD_TEMPLATER
+from . import Session
 
 
 def prompt_and_hash_password():
@@ -34,13 +34,14 @@ class PasskeyConfig(TOMLConfig):
 
 class Passkey(APIRouter):
     def __init__(
-        self,
-        server,
+            self,
+            server,
     ):
-        #server type-checking
+        # server type-checking
         from . import SessionedServer
         self.server: SessionedServer = server
-        if not isinstance(server, SessionedServer): raise TypeError("Passed server is not an instance of Sessioned Server")
+        if not isinstance(server, SessionedServer): raise TypeError(
+            "Passed server is not an instance of Sessioned Server")
 
         # config setup
         self.default_passkey = "!@#$%PASSWORDNOTSET!@#$%"
@@ -58,12 +59,12 @@ class Passkey(APIRouter):
         @self.post("/callback")
         async def callback(request: Request):
             log.warning(f"{self}: Someone attempted to input a passkey!")
-            #check if the session exists first to prevent automatic creation of a new one
+            # check if the session exists first to prevent automatic creation of a new one
             session = request.cookies.get(self.server.session_name)
             if not session:
                 return JSONResponse({"success": True, "message": "There was an issue retrieving your session. "
-                                                                  "If the error persists, Please contact a "
-                                                                  "system administrator."})
+                                                                 "If the error persists, Please contact a "
+                                                                 "system administrator."})
             session = self.server.session_manager(request)
             data = await request.json()
             input_password = data["passkey"]
@@ -108,14 +109,14 @@ class Passkey(APIRouter):
         return self._validate(input_password)
 
     async def show_passkey_prompt(self, request: Request):
-        template = CWD_TEMPLATER.get_template('prompt_for_passkey.html')
         forward = self.server.url + request.url.path
-        log.debug(f"{self}: Showing passkey prompt for request:\n  - cookies={request.cookies}\n  - redirect_url={forward}\n  - callback_url={self.callback_url}")
-        rendered = template.render(
+        log.debug(
+            f"{self}: Showing passkey prompt for request:\n  - cookies={request.cookies}\n  - redirect_url={forward}\n  - callback_url={self.callback_url}")
+        response = self.server.templater.safe_render(
+            'prompt_for_passkey.html',
             redirect_url=forward,
             callback_uri=self.callback_url,
         )
-        response = HTMLResponse(rendered)
         name = self.server.session_name
         cookie = request.cookies.get(name)
         response.set_cookie(self.server.session_name, cookie)
