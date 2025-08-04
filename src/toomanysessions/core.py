@@ -225,6 +225,8 @@ class SessionedServer(ThreadedServer):
                         message=f"The page '{request.url.path}' could not be found."
                     )
 
+                return response
+
             except Exception as e:
                 log.error(f"{self}: Error processing request: {e}")
                 return self.popup_error(
