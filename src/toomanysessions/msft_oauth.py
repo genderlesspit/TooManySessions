@@ -5,22 +5,16 @@ from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import httpx
-import pyperclip
-
-import time
-
 import pkce
-import toml
 from fastapi import APIRouter
-from starlette.requests import Request
 from loguru import logger as log
-from starlette.responses import RedirectResponse, HTMLResponse
+from starlette.requests import Request
 from toomanyconfigs.core import TOMLConfig
 
-from . import CWD_TEMPLATER
-from .sessions import Sessions, Session
+from .sessions import Session
 
 DEBUG = True
+
 
 # noinspection PyUnresolvedReferences
 class MSFTOAuthCFG(TOMLConfig):
@@ -28,11 +22,13 @@ class MSFTOAuthCFG(TOMLConfig):
     tenant_id: str = "common"
     scopes: str = "User.Read Organization.Read.All"
 
+
 @dataclass
 class MSFTOAuthCallback:
     code: str
     state: str
     session_state: str
+
 
 @dataclass
 class MSFTOAuthTokenResponse:
@@ -42,20 +38,22 @@ class MSFTOAuthTokenResponse:
     ext_expires_in: int
     access_token: str
 
+
 class MicrosoftOAuth(APIRouter):
     def __init__(
-        self, 
-        server,
-        **cfg_kwargs
+            self,
+            server,
+            **cfg_kwargs
     ):
-        self.server = server
         from . import SessionedServer
-        if not isinstance(server, SessionedServer): raise TypeError("Passed server is not an instance of Sessioned Server")
+        self.server: SessionedServer = server
+        if not isinstance(server, SessionedServer): raise TypeError(
+            "Passed server is not an instance of Sessioned Server")
 
         _ = self.cwd
         self.cfg_kwargs = cfg_kwargs
         _ = self.cfg
-        self.tenant_id = "common" #Now that we're doing auth by getting tenants from user's all urls should be common
+        self.tenant_id = "common"  # Now that we're doing auth by getting tenants from user's all urls should be common
         # self.tenant_id = self.cfg.tenant_id
         self.scopes = self.cfg.scopes
         self.sessions = self.server.sessions
@@ -72,33 +70,34 @@ class MicrosoftOAuth(APIRouter):
             try:
                 params = MSFTOAuthCallback(**params)
                 session = self.sessions[params.state]
-                
+
                 if not session:
                     log.error("Session not found for state")
                     raise ValueError("Invalid session state")
-                    
+
                 log.debug(f"Retrieved session: {session}")
-                
+
                 if not hasattr(session, 'verifier'):
                     log.error(f"{self}: Session missing verifier attribute")
-                    log.debug(f"{self}: Session attributes: {[attr for attr in dir(session) if not attr.startswith('_')]}")
+                    log.debug(
+                        f"{self}: Session attributes: {[attr for attr in dir(session) if not attr.startswith('_')]}")
                     raise ValueError("OAuth session missing PKCE verifier")
-                    
+
                 if not session.verifier:
                     log.error("Session verifier is empty")
                     raise ValueError("OAuth session verifier is empty")
-                    
+
                 log.debug(f"Using verifier: {session.verifier[:10]}...")
-                
+
             except Exception as e:
                 log.error(f"OAuth callback failed: {type(e).__name__}: {str(e)}")
                 from . import SessionedServer
                 server: SessionedServer = self.server
                 return server.popup_error(500, e)
-        
+
             session.code = params.code
 
-            token_request = self.build_access_token_request(session) #type: ignore
+            token_request = self.build_access_token_request(session)  # type: ignore
             async with httpx.AsyncClient() as client:
                 response = await client.send(token_request)
                 if response.status_code == 200:
@@ -108,7 +107,7 @@ class MicrosoftOAuth(APIRouter):
                     setattr(session, "authenticated", True)
                     log.debug(f"{self}: Updated session:\n  - {session}")
                     key = self.sessions.session_name
-                    response = HTMLResponse(self.login_successful)
+                    response = self.login_successful
                     response.set_cookie(
                         key=key,
                         value=session.token,
@@ -127,7 +126,7 @@ class MicrosoftOAuth(APIRouter):
     def cwd(self) -> SimpleNamespace:
         ns = SimpleNamespace(
             path=Path.cwd(),
-            cfg_file = Path.cwd() / "msftoauth2.toml"
+            cfg_file=Path.cwd() / "msftoauth2.toml"
         )
         #     cfg_file=Path.cwd() / "msftoauth2.toml"
         # )
@@ -214,40 +213,42 @@ class MicrosoftOAuth(APIRouter):
         return client.build_request("POST", url, data=data, headers=headers)
 
     def build_logout_request(self, session: Session, redirect_uri: str):
-       """Build Microsoft OAuth logout URL"""
+        """Build Microsoft OAuth logout URL"""
 
-       base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/logout"
+        base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/logout"
 
-       params = {
-           "post_logout_redirect_uri": redirect_uri
-       }
+        params = {
+            "post_logout_redirect_uri": redirect_uri
+        }
 
-       # Add logout_hint if we have user info
-       if hasattr(session, 'user') and session.user:
-           if hasattr(session.user, 'userPrincipalName'):
-               params["logout_hint"] = session.user.userPrincipalName
-               log.debug(f"{self}: Added logout_hint: {session.user.userPrincipalName}")
+        # Add logout_hint if we have user info
+        if hasattr(session, 'user') and session.user:
+            if hasattr(session.user, 'userPrincipalName'):
+                params["logout_hint"] = session.user.userPrincipalName
+                log.debug(f"{self}: Added logout_hint: {session.user.userPrincipalName}")
 
-       log.debug(f"{self}: Building logout request with the following params:")
-       for param in params:
-           log.debug(f"  -{param}={params.get(param)}")
+        log.debug(f"{self}: Building logout request with the following params:")
+        for param in params:
+            log.debug(f"  -{param}={params.get(param)}")
 
-       url = f"{base_url}?{urlencode(params)}"
-       log.debug(f"Built logout URL: {url}")
+        url = f"{base_url}?{urlencode(params)}"
+        log.debug(f"Built logout URL: {url}")
 
-       client = httpx.Client()
-       request = client.build_request("GET", url)
+        client = httpx.Client()
+        request = client.build_request("GET", url)
 
-       return request
+        return request
 
     @cached_property
     def login_successful(self):
-       template = CWD_TEMPLATER.get_template('redirect.html')
-       return template.render(redirect_url=self.url)
+        return self.server.default_templater.safe_render(
+            "login_success.html",
+            redirect_url=self.url
+        )
 
     def welcome(self, name):
-        template = CWD_TEMPLATER.get_template('welcome.html')
-        return template.render(
+        return self.server.default_templater.safe_render(
+            "welcome.html",
             user=name,
             redirect_url=self.url
         )

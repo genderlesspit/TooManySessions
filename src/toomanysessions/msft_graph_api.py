@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional, List
+from typing import Any
 
 import httpx
 from loguru import logger as log
@@ -19,36 +19,37 @@ class Me:
     userPrincipalName: Any
     id: str
 
+
 @dataclass
 class Organization:
-   id: str
-   deletedDateTime: Any
-   businessPhones: Any
-   city: Any
-   country: Any
-   countryLetterCode: Any
-   createdDateTime: Any
-   defaultUsageLocation: Any
-   displayName: str
-   isMultipleDataLocationsForServicesEnabled: Any
-   marketingNotificationEmails: Any
-   onPremisesLastSyncDateTime: Any
-   onPremisesSyncEnabled: Any
-   partnerTenantType: Any
-   postalCode: Any
-   preferredLanguage: Any
-   securityComplianceNotificationMails: Any
-   securityComplianceNotificationPhones: Any
-   state: Any
-   street: Any
-   technicalNotificationMails: Any
-   tenantType: str
-   directorySizeQuota: Any
-   privacyProfile: Any
-   assignedPlans: Any
-   onPremisesSyncStatus: Any
-   provisionedPlans: Any
-   verifiedDomains: Any
+    id: str
+    deletedDateTime: Any
+    businessPhones: Any
+    city: Any
+    country: Any
+    countryLetterCode: Any
+    createdDateTime: Any
+    defaultUsageLocation: Any
+    displayName: str
+    isMultipleDataLocationsForServicesEnabled: Any
+    marketingNotificationEmails: Any
+    onPremisesLastSyncDateTime: Any
+    onPremisesSyncEnabled: Any
+    partnerTenantType: Any
+    postalCode: Any
+    preferredLanguage: Any
+    securityComplianceNotificationMails: Any
+    securityComplianceNotificationPhones: Any
+    state: Any
+    street: Any
+    technicalNotificationMails: Any
+    tenantType: str
+    directorySizeQuota: Any
+    privacyProfile: Any
+    assignedPlans: Any
+    onPremisesSyncStatus: Any
+    provisionedPlans: Any
+    verifiedDomains: Any
 
 
 class GraphAPI:
