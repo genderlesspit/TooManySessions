@@ -8,4 +8,3 @@ from .sessions import Session, Sessions, authenticate
 from .users import User, Users
 from .core import SessionedServer
 from .msft_oauth import MicrosoftOAuth
-from .msft_graph_api import GraphAPI

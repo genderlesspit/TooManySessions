@@ -3,11 +3,10 @@ from typing import Any, Type
 
 from fastapi import APIRouter
 from loguru import logger as log
-from starlette.requests import Request
+from pyzurecli import Organization, Me
 from starlette.responses import Response
 
-from . import DEBUG, Session, CWD_TEMPLATER
-from .msft_graph_api import Organization, Me
+from . import DEBUG, Session
 
 
 @dataclass

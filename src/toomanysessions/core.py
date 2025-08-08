@@ -6,16 +6,16 @@ from typing import Type
 
 from fastapi import APIRouter
 from fastj2 import FastJ2
-from jinja2 import Environment
 from loguru import logger as log
+from pyzurecli import GraphAPI
 from starlette.requests import Request
 from starlette.responses import Response, RedirectResponse
+from toomanyconfigs import CWD
 from toomanyports import PortManager
 from toomanythreads import ThreadedServer
 
 from . import DEBUG, Session, Sessions, CWD_TEMPLATER
 from . import Users, User
-from .msft_graph_api import GraphAPI
 from .msft_oauth import MicrosoftOAuth, MSFTOAuthTokenResponse
 from .passkey import Passkey
 
@@ -28,11 +28,7 @@ def no_auth(session: Session):
 REQUEST = None
 
 
-# def callback(request: Request, **kwargs):
-#     log.debug(f"Dummy callback method executed!")
-#     return Response(f"{kwargs}")
-
-class SessionedServer(ThreadedServer):
+class SessionedServer(CWD, ThreadedServer):
     def __init__(
             self,
             host: str = "localhost",
@@ -40,28 +36,32 @@ class SessionedServer(ThreadedServer):
             session_name: str = "session",
             session_age: int = (3600 * 8),
             session_model: Type[Session] = Session,
-            authentication_model: str | Type[APIRouter] | None = "msft", #available auth models are 'msft', 'pass', and None
+            authentication_model: str | Type[APIRouter] | None = "msft",
+            # available auth models are 'msft', 'pass', and None
             user_model: Type[User] | None = User,
             user_whitelist: list = None,
             tenant_whitelist: list = None,
             verbose: bool = DEBUG,
             **kwargs
-    ) -> None:
-        #simple declarations
+    ):
+        CWD.__init__(
+            self
+        )
+        # simple declarations
         self.verbose = verbose
         self.host = host
         self.port = port
         self.session_name = session_name
         self.session_age = session_age
-
-        #session model - must be of the Session class
-        self.session_model = session_model
-        if not self.session_model.create:
-            raise ValueError(f"{self}: Session models require a create function!")
         for kwarg in kwargs:
             setattr(self, kwarg, kwargs.get(kwarg))
 
-        #setup sessions architecture
+        if not getattr(self, "session_model", None):
+            self.session_model = session_model
+            if not self.session_model.create: raise ValueError(f"{self}: Session models require a create function!")
+
+        log.debug(f"{self}: Initialized session_model as {self.session_model}!")
+
         if not getattr(self, "sessions", None):
             self.sessions = Sessions(
                 session_model=self.session_model,
@@ -69,164 +69,94 @@ class SessionedServer(ThreadedServer):
                 verbose=self.verbose
             )
 
-        #initialize authentication model
-        self.authentication_model = authentication_model
-        if isinstance(authentication_model, str):
-            if authentication_model == "pass":
-                self.authentication_model: Passkey = Passkey(self)
-                user_model = None
-            if authentication_model == "msft":
-                self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
-        if isinstance(authentication_model, APIRouter):
+        log.debug(f"{self}: Initialized sessions as {self.sessions}!")
+
+        if not getattr(self, "authentication_model", None):
             self.authentication_model = authentication_model
-        if authentication_model is None:
-            self.authentication_model = no_auth
+            self.is_passkey = False #isinstance(self.authentication_model, Passkey)
+            self.is_msft = False #isinstance(self.authentication_model, MicrosoftOAuth)
+            self.is_custom = False #isinstance(self.authentication_model, APIRouter)
+            self.is_noauth = False #(self.authentication_model == no_auth)
+            if isinstance(authentication_model, str):
+                if authentication_model == "pass":
+                    self.authentication_model: Passkey = Passkey(self)
+                    user_model = None
+                    self.is_passkey = True
+                if authentication_model == "msft":
+                    self.authentication_model: MicrosoftOAuth = MicrosoftOAuth(self)
+                    if not getattr(self, "redirect_uri", None):
+                        self.redirect_uri = f"{self.url}/microsoft_oauth/callback"
+                    self.is_msft = True
+            elif self.is_custom:
+                self.authentication_model = authentication_model
+                self.is_custom = True
+            elif authentication_model is None:
+                self.authentication_model = no_auth
+                self.is_noauth = True
 
-        log.debug(f"{self}: Initialized authentication model as {self.authentication_model}")
+        log.debug(f"{self}: Initialized authentication model as {self.authentication_model}!")
 
-        self.user_model = user_model
-        if self.user_model is None:
-            if (isinstance(self.authentication_model, MicrosoftOAuth)): raise RuntimeError("You can't have OAuth without a User Model!")
-            log.warning(f"{self}: Launching without users! Ignore if this is intentional.")
-        else:
-            self.users = Users(
-                self.user_model,
-                self.user_model.create,
-            )
-            if not self.user_model.create:
-                raise ValueError(f"{self}: User models require a create function!")
+        if not getattr(self, "user_model", None):
+            self.user_model = user_model
+            if self.user_model is None:
+                if self.is_msft: raise RuntimeError("You can't have OAuth without a User Model!")
+                log.warning(f"{self}: Launching without persisted users! Ignore if this is intentional.")
+            else:
+                self.users = Users(
+                    self.user_model,
+                    self.user_model.create,
+                )
+                if not self.user_model.create: raise ValueError(f"{self}: User models require a create function!")
 
-            self.user_whitelist = user_whitelist
-            log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
-            self.tenant_whitelist = tenant_whitelist
-            log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
+                if self.is_msft:
+                    self.user_whitelist = user_whitelist
+                    log.debug(f"{self}: Initialized user_whitelist:\n  - whitelist={self.user_whitelist}")
 
-        super().__init__(
+                    if tenant_whitelist:
+                        self.tenant_whitelist = [self.authentication_model.azure_cli.tenant_id] + tenant_whitelist
+                    self.tenant_whitelist = tenant_whitelist
+                    log.debug(f"{self}: Initialized tenant_whitelist:\n  - whitelist={self.tenant_whitelist}")
+
+        log.debug(f"{self}: Initialized user model as {self.user_model}!")
+
+        if not getattr(self, "sessioned_middleware", None):
+            self.sessioned_middleware = self.default_middleware
+
+        ThreadedServer.__init__(
+            self,
             host=self.host,
             port=self.port,
-            verbose=self.verbose
+            verbose=self.verbose,
+            # database={}
         )
-        #these must be after super().__init__
+
         self.include_router(self.sessions)
         if not self.authentication_model == no_auth: self.include_router(self.authentication_model)
         if getattr(self, "user_model", None): self.include_router(self.users)
 
-        if self.verbose:
-            try:
-                log.success(f"{self}: Initialized successfully!\n  - host={self.host}\n  - port={self.port}")
-            except Exception:
-                log.success(f"Initialized new ThreadedServer successfully!\n  - host={self.host}\n  - port={self.port}")
-
-        for route in self.routes:
-            log.debug(f"{self}: Initialized route {route.path}")
-
         self.default_templater = FastJ2(error_method=self.renderer_error, cwd=Path(__file__).parent)
+
+        if self.verbose: log.success(
+            f"Initialized new Sessioned successfully!\n  - host={self.host}\n  - port={self.port}")
 
         @self.middleware("http")
         async def middleware(request: Request, call_next):
-            log.info(f"{self}: Got request with following cookies:\n  - cookies={request.cookies.items()}")
+            log.info(f"{self}: Got request for '{request.url.path}':\n  - cookies={request.cookies.items()}")
 
+            # Check if we should bypass auth entirely
+            bypass_paths = ["/microsoft_oauth", "/authenticated/", "/favicon.ico", "/logout", "/passkey"]
+
+            # Add custom bypass routes if they exist
             if getattr(self.authentication_model, "bypass_routes", None):
-                log.debug(f"{self}: Acknowledged bypass_routes: {self.authentication_model.bypass_routes}")
-                if request.url.path in self.authentication_model.bypass_routes:
-                    log.debug(f"{self}: Bypassing auth middleware for {request.url}")
-                    return await call_next(request)
-            if "/authenticated/" in request.url.path:
-                return await call_next(request)
-            if "/favicon.ico" in request.url.path:
-                return await call_next(request)
-            if "/logout" in request.url.path:
-                return await call_next(request)
-            if "/passkey" in request.url.path:
+                bypass_paths.extend(self.authentication_model.bypass_routes)
+
+            # Check if current path should bypass auth
+            if any(path in request.url.path for path in bypass_paths):
+                log.debug(f"{self}: Bypassing auth middleware for {request.url}")
                 return await call_next(request)
 
             try:
-                session = self.session_manager(request)
-                if session.throttle != 0:
-                    log.debug(f"{self}: Session '{session.token}' has been throttled for {session.throttle} seconds!")
-                    asyncio.wait(session.throttle)
-
-                if not session.authenticated:
-                    log.warning(f"{self}: Session is not authenticated!")
-                    if self.authentication_model == no_auth:
-                        self.authentication_model(session)
-                    elif isinstance(self.authentication_model, MicrosoftOAuth):
-                        auth: MicrosoftOAuth = self.authentication_model
-                        oauth_request = auth.build_auth_code_request(session)
-                        return self.redirect_html(oauth_request.url)
-                    elif isinstance(self.authentication_model, Passkey):
-                        auth: Passkey = self.authentication_model
-                        return await auth.show_passkey_prompt(request)
-
-                if getattr(self, "user_model", None):
-                    if not session.user:
-                        setattr(session, "user", self.users.user_model.create(session))
-                        user: User = session.user
-                        if not session.user: raise RuntimeError
-                        if self.authentication_model == no_auth:
-                            pass
-                        elif isinstance(self.authentication_model, MicrosoftOAuth):
-                            metadata: MSFTOAuthTokenResponse = session.oauth_token_data
-                            session.graph = GraphAPI(metadata.access_token)
-                            setattr(user, "me", session.graph.me)
-                            setattr(user, "org", session.graph.organization)
-                            if (user.me is None) or (user.org is None): raise RuntimeError("Error fetching user's information!")
-
-                    if (getattr(self, 'tenant_whitelist', None) is not None) or (getattr(self, 'user_whitelist', None) is not None):
-                        log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
-                        log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
-                        log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
-                        user: User = session.user
-                        if not session.user: raise RuntimeError
-                        log.debug(f"{self}: Successfully found user setup!\n  - user={user}")
-                        if isinstance(self.authentication_model, MicrosoftOAuth):
-                            tenant = user.org.id
-                            email = user.me.userPrincipalName
-                            if not (tenant and email): raise RuntimeError
-                            log.debug(f"{self}: Successfully found user's whitelist details!\n  - tenant={tenant}\n  - email={email}")
-                            if not session.whitelisted:
-                                try:
-                                    if getattr(self, 'tenant_whitelist', None) is not None:
-                                        log.debug(f"{self}: Checking tenant id...")
-                                        log.debug(f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
-                                        if tenant not in self.tenant_whitelist:
-                                            log.warning(
-                                                f"{self}: Unauthorized tenant {tenant} attempted to access the website!")
-                                            raise PermissionError
-                                    else:
-                                        log.debug(f"{self}: No tenant whitelist. Skipping...")
-
-                                    # Then check user whitelist
-                                    if getattr(self, 'user_whitelist', None) is not None:
-                                        log.debug(f"{self}: Checking user's email...")
-                                        if email not in self.user_whitelist:
-                                            log.warning(
-                                                f"{self}: Unauthorized user {email} attempted to access the website!")
-                                            raise PermissionError
-                                    else:
-                                        log.debug(f"{self}: No user whitelist. Skipping...")
-
-                                except PermissionError:
-                                    return self.popup_unauthorized("You're not authorized to access this website.\n"
-                                                                "Either log into a different account or contact a system administrator.")
-                                setattr(session, "whitelisted", True)
-
-                    if not session.welcomed:
-                        log.warning(f"{self}: User has yet to be welcomed!")
-                        if isinstance(self.authentication_model, MicrosoftOAuth):
-                            setattr(session, "welcomed", True)
-                            return self.authentication_model.welcome(session.user.me.displayName)
-
-                response = await call_next(request)
-
-                # Handle 404s with animated popup
-                if response.status_code == 404:
-                    return self.popup_404(
-                        message=f"The page '{request.url.path}' could not be found."
-                    )
-
-                return response
-
+                return await self.sessioned_middleware(request, call_next)
             except Exception as e:
                 log.error(f"{self}: Error processing request: {e}")
                 return self.popup_error(
@@ -255,18 +185,17 @@ class SessionedServer(ThreadedServer):
                 if isinstance(self.authentication_model, MicrosoftOAuth):
                     post_logout_redirect_uri = self.logout_uri + "/complete"
                     logout_request = self.authentication_model.build_logout_request(session, post_logout_redirect_uri)
+                    response = RedirectResponse(url=logout_request.url, status_code=302)
+                    response.delete_cookie(self.session_name, path="/")
+                else:
+                    raise NotImplementedError
 
-                # Delete session from cache
                 del self.sessions.cache[cookie]
-
-                # Create redirect response and delete cookie
-                response = RedirectResponse(url=logout_request.url, status_code=302)
-                response.delete_cookie(self.session_name, path="/")
                 return response
 
         @self.get("/logout/complete")
-        def logout(request: Request):
-            popup_html = self.popup_generic(
+        def logout():
+            return self.popup_generic(
                 popup_type="success",
                 header="Logged Out",
                 message="You have been successfully logged out.",
@@ -278,7 +207,98 @@ class SessionedServer(ThreadedServer):
                     }
                 ]
             )
-            return popup_html
+
+    def __repr__(self):
+        return f"{self.cwd.name.title()}.SessionedServer"
+
+    async def default_middleware(self, request, call_next):
+        session = self.session_manager(request)
+        if session.throttle != 0:
+            log.debug(f"{self}: Session '{session.token}' has been throttled for {session.throttle} seconds!")
+            asyncio.wait(session.throttle)
+
+        if not session.authenticated:
+            log.warning(f"{self}: Session is not authenticated!")
+            if self.is_noauth:
+                log.warning(f"{self}: 'No authentication' is True! Bypassing authentication!")
+                self.authentication_model(session)
+            elif self.is_msft:
+                oauth_request = self.authentication_model.build_auth_code_request(session)
+                return self.redirect_html(oauth_request.url)
+            elif self.is_passkey:
+                return await self.authentication_model.show_passkey_prompt(request)
+
+        if getattr(self, "user_model", None):
+            if not session.user:
+                setattr(session, "user", self.users.user_model.create(session))
+                user: User = session.user
+                if not session.user: raise RuntimeError(
+                    "The user model create method does not persist user to session!")
+                if self.is_msft:
+                    metadata: MSFTOAuthTokenResponse = session.oauth_token_data
+                    session.graph = GraphAPI(metadata.access_token)
+                    setattr(user, "me", session.graph.me)
+                    setattr(user, "org", session.graph.organization)
+                    if (user.me is None) or (user.org is None): raise RuntimeError(
+                        "Error fetching user's information!")
+            if self.is_msft:
+                if self.tenant_whitelist is not None or self.user_whitelist is not None:
+                    if not session.whitelisted:
+                        log.warning(f"{self}: Whitelist status is {session.whitelisted} for {session.token}!")
+                        log.debug(f"{self}: Tenant whitelist:\n  - whitelist={self.tenant_whitelist}")
+                        log.debug(f"{self}: User whitelist:\n  - whitelist={self.user_whitelist}")
+                        user: User = session.user
+                        if not session.user: raise RuntimeError(
+                            "Can't check if user is whitelisted if users aren't persisted to session!")
+                        tenant = user.org.id
+                        email = user.me.userPrincipalName
+                        if not (tenant and email): raise RuntimeError(
+                            "TenantID and email weren't correctly retrieved using GraphAPI!")
+                        log.debug(
+                            f"{self}: Successfully found user's whitelist details!\n  - tenant={tenant}\n  - email={email}")
+                        try:
+                            # Check user's tenant
+                            if getattr(self, 'tenant_whitelist', None) is not None:
+                                log.debug(f"{self}: Checking tenant id...")
+                                log.debug(
+                                    f"{self}: Found tenant {tenant} for {session.user.me.userPrincipalName}")
+                                if tenant not in self.tenant_whitelist:
+                                    log.warning(
+                                        f"{self}: Unauthorized tenant {tenant} attempted to access the website!")
+                                    raise PermissionError
+                            else:
+                                log.debug(f"{self}: No tenant whitelist. Skipping...")
+
+                            # Then check user whitelist
+                            if getattr(self, 'user_whitelist', None) is not None:
+                                log.debug(f"{self}: Checking user's email...")
+                                if email not in self.user_whitelist:
+                                    log.warning(
+                                        f"{self}: Unauthorized user {email} attempted to access the website!")
+                                    raise PermissionError
+                            else:
+                                log.debug(f"{self}: No user whitelist. Skipping...")
+
+                        except PermissionError:
+                            return self.popup_unauthorized("You're not authorized to access this website.\n"
+                                                           "Either log into a different account or contact a system administrator.")
+                        setattr(session, "whitelisted", True)
+
+                if not session.welcomed:
+                    log.warning(f"{self}: User has yet to be welcomed!")
+                    if isinstance(self.authentication_model, MicrosoftOAuth):
+                        setattr(session, "welcomed", True)
+                        return self.authentication_model.welcome(session.user.me.displayName)
+
+        response = await call_next(request)
+
+        # Handle 404s with animated popup
+        if response.status_code == 404:
+            return self.popup_404(
+                message=f"The page '{request.url.path}' could not be found."
+            )
+
+        return response
 
     def session_manager(self, request: Request) -> Session | Response:
         if "/microsoft_oauth/callback" in request.url.path:
