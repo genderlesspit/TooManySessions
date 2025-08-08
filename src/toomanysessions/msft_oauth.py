@@ -1,14 +1,16 @@
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import httpx
 import pkce
 from fastapi import APIRouter
 from loguru import logger as log
+from pyzurecli import AzureCLI
 from starlette.requests import Request
+from starlette.responses import RedirectResponse
+from toomanyconfigs import CWD
 from toomanyconfigs.core import TOMLConfig
 
 from .sessions import Session
@@ -39,7 +41,7 @@ class MSFTOAuthTokenResponse:
     access_token: str
 
 
-class MicrosoftOAuth(APIRouter):
+class MicrosoftOAuth(CWD, APIRouter):
     def __init__(
             self,
             server,
@@ -49,17 +51,29 @@ class MicrosoftOAuth(APIRouter):
         self.server: SessionedServer = server
         if not isinstance(server, SessionedServer): raise TypeError(
             "Passed server is not an instance of Sessioned Server")
-
-        _ = self.cwd
-        self.cfg_kwargs = cfg_kwargs
-        _ = self.cfg
-        self.tenant_id = "common"  # Now that we're doing auth by getting tenants from user's all urls should be common
-        # self.tenant_id = self.cfg.tenant_id
-        self.scopes = self.cfg.scopes
         self.sessions = self.server.sessions
         self.url = self.server.url
+        self.prefix = "/microsoft_oauth"
+        self.redirect_uri = self.url + self.prefix + "/callback"
 
-        super().__init__(prefix="/microsoft_oauth")
+        CWD.__init__(
+            self,
+            "msftoauth2.toml",
+        )
+        self.cfg_file: Path = self.msftoauth2
+        self.cfg_kwargs = cfg_kwargs
+        _ = self.cfg
+        self.tenant_id = self.cfg.tenant_id  # Now that we're doing auth by getting tenants from user's all urls should be common
+        self.scopes = self.cfg.scopes
+
+        APIRouter.__init__(
+            self,
+            prefix=self.prefix
+        )
+
+        @self.get("/")
+        async def redirect():
+            return RedirectResponse(self.redirect_uri)
 
         @self.get("/callback")
         async def callback(request: Request):
@@ -122,39 +136,34 @@ class MicrosoftOAuth(APIRouter):
         for route in self.routes:
             self.bypass_routes.append(route.path)
 
+    def __repr__(self):
+        return f"[MicrosoftOAuth]"
+
     @cached_property
-    def cwd(self) -> SimpleNamespace:
-        ns = SimpleNamespace(
-            path=Path.cwd(),
-            cfg_file=Path.cwd() / "msftoauth2.toml"
+    def azure_cli(self) -> AzureCLI | None:
+        return AzureCLI(
+            cwd=self.cwd,
+            redirect_uri=self.redirect_uri
         )
-        #     cfg_file=Path.cwd() / "msftoauth2.toml"
-        # )
-        # for name, p in vars(ns).items():
-        #     if p.suffix:
-        #         p.parent.mkdir(parents=True, exist_ok=True)
-        #         p.touch(exist_ok=True)
-        #         if DEBUG:
-        #             log.debug(f"[{self}]: Ensured file {p}")
-        #     else:
-        #         p.mkdir(parents=True, exist_ok=True)
-        #         if DEBUG:
-        #             log.debug(f"[{self}]: Ensured directory {p}")
-        return ns
 
     @cached_property
     def cfg(self):
-        return MSFTOAuthCFG.create(self.cwd.cfg_file, **self.cfg_kwargs)
+        if not self.cfg_kwargs.get("client_id"):
+            client_id = self.azure_cli.app_registration.client_id
+            self.cfg_kwargs["client_id"] = client_id
+        cfg = MSFTOAuthCFG.create(
+            _source=self.cfg_file,
+            prompt_empty_fields=False,
+            **self.cfg_kwargs
+        )
+        if not cfg.client_id: raise RuntimeError
+        return cfg
 
     @cached_property
     def client_id(self):
         return self.cfg.client_id
 
-    @cached_property
-    def redirect_uri(self):
-        return f"{self.url}/microsoft_oauth/callback"
-
-    def build_auth_code_request(self, session: Session):
+    def build_auth_code_request(self, session: Session) -> httpx.Request:
         """Build Microsoft OAuth authorization URL with fresh PKCE"""
         code_verifier = pkce.generate_code_verifier(length=43)
         code_challenge = pkce.get_code_challenge(code_verifier)
@@ -189,7 +198,7 @@ class MicrosoftOAuth(APIRouter):
 
         return request
 
-    def build_access_token_request(self, session):
+    def build_access_token_request(self, session) -> httpx.Request:
         """Build the POST request to exchange authorization code for access token"""
         url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/token"
 
@@ -212,7 +221,7 @@ class MicrosoftOAuth(APIRouter):
         client = httpx.Client()
         return client.build_request("POST", url, data=data, headers=headers)
 
-    def build_logout_request(self, session: Session, redirect_uri: str):
+    def build_logout_request(self, session: Session, redirect_uri: str) -> httpx.Request:
         """Build Microsoft OAuth logout URL"""
 
         base_url = f"https://login.microsoftonline.com/{self.tenant_id}/oauth2/v2.0/logout"

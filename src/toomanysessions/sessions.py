@@ -1,12 +1,10 @@
 import time
 from dataclasses import dataclass
 from typing import Type, Any
-import requests
+
 import httpx
 from fastapi import APIRouter
-from httpx import request
 from loguru import logger as log
-from starlette.requests import Request
 
 from . import DEBUG
 
@@ -59,22 +57,19 @@ async def authenticate(session: Session, session_name: str, redirect_uri: str) -
         session.authenticated = False
     return session
 
+
 class Sessions(APIRouter):
     def __init__(
-        self,
-        session_model: Type[Session] = Session,
-        session_name: str = "session",
-        verbose: bool = DEBUG
+            self,
+            session_model: Type[Session] = Session,
+            session_name: str = "session",
+            verbose: bool = DEBUG
     ):
         super().__init__(prefix="/sessions")
         self.session_model = session_model
         self.verbose = verbose
         self.cache: dict[str, Session] = {}
         self.session_name = session_name
-
-        # @self.get("")
-        # def get_session(request: Request):
-        #     return self.cache
 
     def __getitem__(self, session_or_token: Any):
         if isinstance(session_or_token, Session): session_or_token: str = session_or_token.token
